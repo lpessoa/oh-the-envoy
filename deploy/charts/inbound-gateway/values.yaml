@@ -12,10 +12,34 @@ createGatewayClass: false
 listener:
   port: 80
 
-# Backend (service-a) this gateway routes HTTP/2 traffic to.
-backend:
-  name: service-a
-  port: 8080
-
-# Hostname the HTTPRoute matches. Use "*" to match any Host header.
+# Hostname all routes match. The demo sends "Host: inbound.local".
 hostname: "inbound.local"
+
+# One HTTPRoute per entry. requireJWT: true adds the route to the JWT
+# SecurityPolicy's targetRefs; false leaves it open (token minting must be
+# reachable without a token).
+routes:
+  - name: route-auth
+    pathPrefix: /auth
+    backend:
+      name: token-service
+      port: 8080
+    requireJWT: false
+  - name: route-a
+    pathPrefix: /a
+    backend:
+      name: service-a
+      port: 8080
+    requireJWT: true
+  - name: route-c
+    pathPrefix: /c
+    backend:
+      name: service-c
+      port: 8080
+    requireJWT: true
+
+# JWT validation settings enforced by the Envoy proxy for protected routes.
+jwt:
+  issuer: http://token-service.envoy-experiment.svc.cluster.local:8080
+  audience: envoy-experiment
+  jwksURI: http://token-service.envoy-experiment.svc.cluster.local:8080/auth/jwks.json

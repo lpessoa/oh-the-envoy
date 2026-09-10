@@ -1,0 +1,22 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ .Values.gatewayName }}-jwt
+  namespace: {{ .Values.namespace }}
+spec:
+  targetRefs:
+{{- range .Values.routes }}
+{{- if .requireJWT }}
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ $.Values.gatewayName }}-{{ .name }}
+{{- end }}
+{{- end }}
+  jwt:
+    providers:
+      - name: token-service
+        issuer: {{ .Values.jwt.issuer }}
+        audiences:
+          - {{ .Values.jwt.audience }}
+        remoteJWKS:
+          uri: {{ .Values.jwt.jwksURI }}
