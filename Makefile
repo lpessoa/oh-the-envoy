@@ -4,7 +4,7 @@
 CLUSTER := envoy-experiment
 KCTX := k3d-$(CLUSTER)
 NAMESPACE := envoy-experiment
-SERVICES := service-a service-b service-d
+SERVICES := service-a service-b service-c service-d token-service
 GOBIN := $(shell go env GOPATH)/bin
 KUBECTL := kubectl --context $(KCTX)
 HELM := helm --kube-context $(KCTX)
@@ -64,7 +64,7 @@ bootstrap-gateway-controller:
 ## Apply namespace + the three service Deployments/Services.
 deploy-services:
 	$(KUBECTL) apply -f deploy/k8s/namespace.yaml
-	$(KUBECTL) apply -f deploy/k8s/service-a.yaml -f deploy/k8s/service-b.yaml -f deploy/k8s/service-d.yaml
+	$(KUBECTL) apply -f deploy/k8s/service-a.yaml -f deploy/k8s/service-b.yaml -f deploy/k8s/service-c.yaml -f deploy/k8s/service-d.yaml -f deploy/k8s/token-service.yaml
 
 ## Install both per-instance Envoy Gateway Helm releases.
 deploy-infra:
@@ -101,5 +101,5 @@ test:
 ## gateway controller running (useful for iterating without a full rebuild).
 clean:
 	-$(HELM) uninstall inbound-gateway outbound-gateway
-	-$(KUBECTL) delete -f deploy/k8s/service-a.yaml -f deploy/k8s/service-b.yaml -f deploy/k8s/service-d.yaml
+	-$(KUBECTL) delete -f deploy/k8s/service-a.yaml -f deploy/k8s/service-b.yaml -f deploy/k8s/service-c.yaml -f deploy/k8s/service-d.yaml -f deploy/k8s/token-service.yaml
 	-$(KUBECTL) delete -f deploy/k8s/namespace.yaml

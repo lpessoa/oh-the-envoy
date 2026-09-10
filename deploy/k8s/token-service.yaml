@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: token-service
+  namespace: envoy-experiment
+  labels:
+    app: token-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: token-service
+  template:
+    metadata:
+      labels:
+        app: token-service
+    spec:
+      containers:
+        - name: token-service
+          image: envoy-experiment/token-service:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: LISTEN_ADDR
+              value: ":8080"
+            - name: ISSUER
+              value: "http://token-service.envoy-experiment.svc.cluster.local:8080"
+            - name: AUDIENCE
+              value: "envoy-experiment"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: token-service
+  namespace: envoy-experiment
+spec:
+  selector:
+    app: token-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

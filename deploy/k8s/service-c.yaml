@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-c
+  namespace: envoy-experiment
+  labels:
+    app: service-c
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-c
+  template:
+    metadata:
+      labels:
+        app: service-c
+    spec:
+      containers:
+        - name: service-c
+          image: envoy-experiment/service-c:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http2
+              containerPort: 8080
+          env:
+            - name: LISTEN_ADDR
+              value: ":8080"
+            - name: OUTBOUND_GATEWAY_ADDR
+              value: "outbound-gateway.envoy-gateway-system.svc.cluster.local:80"
+            - name: SERVICE_D_AUTHORITY
+              value: "service-d.internal"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-c
+  namespace: envoy-experiment
+spec:
+  selector:
+    app: service-c
+  ports:
+    - name: http2
+      port: 8080
+      targetPort: 8080
+      appProtocol: kubernetes.io/h2c
