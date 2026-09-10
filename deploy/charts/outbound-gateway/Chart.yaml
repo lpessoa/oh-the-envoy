@@ -1,0 +1,5 @@
+apiVersion: v2
+name: outbound-gateway
+description: Envoy Gateway instance acting as an egress gateway for gRPC traffic to service-d (outbound).
+version: 0.1.0
+appVersion: "0.1.0"

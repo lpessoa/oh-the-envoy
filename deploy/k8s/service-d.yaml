@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-d
+  namespace: envoy-experiment
+  labels:
+    app: service-d
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-d
+  template:
+    metadata:
+      labels:
+        app: service-d
+    spec:
+      containers:
+        - name: service-d
+          image: envoy-experiment/service-d:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: grpc
+              containerPort: 9000
+          env:
+            - name: LISTEN_ADDR
+              value: ":9000"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-d
+  namespace: envoy-experiment
+spec:
+  selector:
+    app: service-d
+  ports:
+    - name: grpc
+      port: 9000
+      targetPort: 9000
+      appProtocol: grpc

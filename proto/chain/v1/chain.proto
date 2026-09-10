@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package chain.v1;
+
+option go_package = "envoy-experiment/gen/chain/v1;chainv1";
+
+// ChainService is implemented by service-b and service-d. service-a exposes
+// an HTTP/2 endpoint and translates incoming requests into a ChainRequest
+// before calling service-b over gRPC.
+service ChainService {
+  rpc Process(ChainRequest) returns (ChainResponse);
+}
+
+message ChainRequest {
+  // Correlates a single call across the whole hop chain.
+  string trace_id = 1;
+  // Free-form payload carried through the chain (e.g. repassed HTTP body).
+  string payload = 2;
+  // Names of services the request has already passed through.
+  repeated string hops = 3;
+}
+
+message ChainResponse {
+  // Final message produced by the terminal hop (service-d).
+  string message = 1;
+  // Names of services the response has passed through, in call order.
+  repeated string hops = 2;
+}

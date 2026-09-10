@@ -1,0 +1,14 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.gatewayName }}
+  namespace: {{ .Values.namespace }}
+spec:
+  gatewayClassName: {{ .Values.gatewayClassName }}
+  listeners:
+    - name: grpc
+      protocol: HTTP
+      port: {{ .Values.listener.port }}
+      allowedRoutes:
+        namespaces:
+          from: Same

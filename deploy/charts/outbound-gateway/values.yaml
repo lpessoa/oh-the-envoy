@@ -1,0 +1,22 @@
+# Namespace where the Gateway and Route are created.
+namespace: envoy-experiment
+
+# Name of this Gateway instance.
+gatewayName: outbound-gateway
+
+# GatewayClass to use. Assumes the Envoy Gateway controller + this
+# GatewayClass are already installed on the cluster (see repo README).
+gatewayClassName: envoy
+createGatewayClass: false
+
+listener:
+  port: 80
+
+# Backend (service-d) this gateway routes gRPC traffic to.
+backend:
+  name: service-d
+  port: 9000
+
+# :authority (Host) value clients must dial with for the GRPCRoute to match
+# and forward to service-d. service-b sets this via grpc.WithAuthority(...).
+hostname: "service-d.internal"

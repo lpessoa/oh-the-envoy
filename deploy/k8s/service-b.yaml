@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-b
+  namespace: envoy-experiment
+  labels:
+    app: service-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-b
+  template:
+    metadata:
+      labels:
+        app: service-b
+    spec:
+      containers:
+        - name: service-b
+          image: envoy-experiment/service-b:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: grpc
+              containerPort: 9000
+          env:
+            - name: LISTEN_ADDR
+              value: ":9000"
+            - name: OUTBOUND_GATEWAY_ADDR
+              value: "outbound-gateway.envoy-gateway-system.svc.cluster.local:80"
+            - name: SERVICE_D_AUTHORITY
+              value: "service-d.internal"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-b
+  namespace: envoy-experiment
+spec:
+  selector:
+    app: service-b
+  ports:
+    - name: grpc
+      port: 9000
+      targetPort: 9000
+      appProtocol: grpc

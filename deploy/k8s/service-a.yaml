@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-a
+  namespace: envoy-experiment
+  labels:
+    app: service-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-a
+  template:
+    metadata:
+      labels:
+        app: service-a
+    spec:
+      containers:
+        - name: service-a
+          image: envoy-experiment/service-a:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http2
+              containerPort: 8080
+          env:
+            - name: LISTEN_ADDR
+              value: ":8080"
+            - name: SERVICE_B_ADDR
+              value: "service-b.envoy-experiment.svc.cluster.local:9000"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-a
+  namespace: envoy-experiment
+spec:
+  selector:
+    app: service-a
+  ports:
+    - name: http2
+      port: 8080
+      targetPort: 8080
+      appProtocol: kubernetes.io/h2c

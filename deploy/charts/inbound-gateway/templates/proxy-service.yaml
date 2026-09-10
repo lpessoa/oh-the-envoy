@@ -1,0 +1,17 @@
+# Stable-named Service selecting the Envoy proxy pods that Envoy Gateway
+# creates for this Gateway (whose auto-generated Service name includes a
+# non-deterministic hash). Lives in envoy-gateway-system because Services can
+# only select pods in their own namespace, and that's where Envoy Gateway
+# places the proxy pods.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.gatewayName }}
+  namespace: envoy-gateway-system
+spec:
+  selector:
+    gateway.envoyproxy.io/owning-gateway-name: {{ .Values.gatewayName }}
+    gateway.envoyproxy.io/owning-gateway-namespace: {{ .Values.namespace }}
+  ports:
+    - port: {{ .Values.listener.port }}
+      targetPort: http-{{ .Values.listener.port }}
