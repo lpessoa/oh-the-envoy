@@ -96,7 +96,7 @@ test:
 	@$(KUBECTL) port-forward -n envoy-gateway-system svc/inbound-gateway 8888:80 >/dev/null 2>&1 & \
 	pf_pid=$$!; sleep 3; \
 	tok=$$(curl -s -X POST -H "Host: inbound.local" http://localhost:8888/auth/token | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p'); \
-	curl -s --http2-prior-knowledge -H "Host: inbound.local" -H "Authorization: $$tok" -X POST http://localhost:8888/a/hello -d 'hello-from-make-test'; echo; \
+	curl -s --http2-prior-knowledge -H "Host: inbound.local" -H "Authorization: Bearer $$tok" -X POST http://localhost:8888/a/hello -d 'hello-from-make-test'; echo; \
 	kill $$pf_pid
 
 ## Mint a JWT via the (open) /auth route and print an export-able line.

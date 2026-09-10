@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Five-step demo of the JWT-protected multi-route sandbox. Doubles as the
-# E2E acceptance test: exits non-zero on the first failed expectation.
+# E2E acceptance test: exits non-zero if any expectation fails.
 set -u
 KCTX="${KCTX:-k3d-envoy-experiment}"
 PORT="${PORT:-8888}"
@@ -33,16 +33,16 @@ CODE=$(curl -s -o /dev/null -w '%{http_code}' --http2-prior-knowledge -H "$HOSTH
 check "unauthenticated /a rejected" "401" "$CODE"
 
 echo "== 3. Path A full cycle (A -> B -> egress -> D) =="
-RESP=$(curl -s --http2-prior-knowledge -H "$HOSTHDR" -H "Authorization: ******" -X POST "$BASE/a/hello" -d 'ping-a')
+RESP=$(curl -s --http2-prior-knowledge -H "$HOSTHDR" -H "Authorization: Bearer $TOKEN" -X POST "$BASE/a/hello" -d 'ping-a')
 check "path A hops" '"service-a","service-b","service-d","service-a(response)"' "$RESP"
 
 echo "== 4. Path C short cycle (C -> egress -> D, ProcessDirect) =="
-RESP=$(curl -s --http2-prior-knowledge -H "$HOSTHDR" -H "Authorization: ******" -X POST "$BASE/c/hello" -d 'ping-c')
+RESP=$(curl -s --http2-prior-knowledge -H "$HOSTHDR" -H "Authorization: Bearer $TOKEN" -X POST "$BASE/c/hello" -d 'ping-c')
 check "path C hops" '"service-c","service-d","service-c(response)"' "$RESP"
-check "path C direct route marker" "direct route" "$RESP"
+check "path C direct route marker" "(direct route)" "$RESP"
 
 echo "== 5. Tampered token -> 401 =="
-CODE=$(curl -s -o /dev/null -w '%{http_code}' --http2-prior-knowledge -H "$HOSTHDR" -H "Authorization: ******" "$BASE/a/hello")
+CODE=$(curl -s -o /dev/null -w '%{http_code}' --http2-prior-knowledge -H "$HOSTHDR" -H "Authorization: Bearer ${TOKEN}tampered" "$BASE/a/hello")
 check "tampered token rejected" "401" "$CODE"
 
 echo ""
