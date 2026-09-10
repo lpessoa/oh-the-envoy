@@ -64,7 +64,7 @@ sequenceDiagram
     alt missing or invalid token
         gw-->>client: 401
     else valid token
-        gw->>a: POST /hello (HTTP/2)
+        gw->>a: POST /a/hello (HTTP/2)
         a->>b: gRPC Process (direct, ClusterIP)
         b->>egw: gRPC Process (:authority=service-d.internal)
         egw->>d: gRPC Process
@@ -88,7 +88,7 @@ sequenceDiagram
 
     client->>gw: POST /c/hello (Authorization: Bearer <token>)
     Note over gw: validates JWT (fetches/caches JWKS from token-service)
-    gw->>c: POST /hello (HTTP/2)
+    gw->>c: POST /c/hello (HTTP/2)
     c->>egw: gRPC ProcessDirect (:authority=service-d.internal)
     egw->>d: gRPC ProcessDirect
     d-->>egw: ChainResponse ("(direct route)", hops+=service-d)

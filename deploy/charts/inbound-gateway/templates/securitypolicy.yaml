@@ -1,3 +1,6 @@
+{{- $jwtRoutes := list }}
+{{- range .Values.routes }}{{- if .requireJWT }}{{- $jwtRoutes = append $jwtRoutes . }}{{- end }}{{- end }}
+{{- if $jwtRoutes }}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
@@ -20,3 +23,4 @@ spec:
           - {{ .Values.jwt.audience }}
         remoteJWKS:
           uri: {{ .Values.jwt.jwksURI }}
+{{- end }}

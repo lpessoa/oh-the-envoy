@@ -1,4 +1,6 @@
 /service-a
 /service-b
+/service-c
 /service-d
+/token-service
 *.log

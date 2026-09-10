@@ -50,7 +50,7 @@ func New(issuer, audience string, ttl time.Duration) (*Service, error) {
 func (s *Service) Mint(now time.Time) (string, error) {
 	claims := jwt.MapClaims{
 		"iss": s.issuer,
-		"aud": s.audience,
+		"aud": []string{s.audience},
 		"sub": "demo-user",
 		"iat": now.Unix(),
 		"exp": now.Add(s.ttl).Unix(),

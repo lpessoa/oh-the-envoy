@@ -18,7 +18,7 @@ HELM := helm --kube-context $(KCTX)
 proto:
 	PATH="$$PATH:$(GOBIN)" buf generate
 
-## Compile all three services locally (sanity check).
+## Compile all services locally (sanity check).
 build:
 	go build ./...
 
@@ -62,7 +62,7 @@ bootstrap-gateway-controller:
 	$(KUBECTL) wait --timeout=120s -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 	$(KUBECTL) apply -f deploy/k8s/gatewayclass.yaml
 
-## Apply namespace + the three service Deployments/Services.
+## Apply namespace + all service Deployments/Services.
 deploy-services:
 	$(KUBECTL) apply -f deploy/k8s/namespace.yaml
 	$(KUBECTL) apply -f deploy/k8s/service-a.yaml -f deploy/k8s/service-b.yaml -f deploy/k8s/service-c.yaml -f deploy/k8s/service-d.yaml -f deploy/k8s/token-service.yaml
@@ -79,7 +79,7 @@ deploy: docker-build k3d-import deploy-services deploy-infra
 ## gateway controller, build/import images, and deploy services + gateways.
 up: cluster-up bootstrap-gateway-controller deploy
 	@echo ""
-	@echo "Ready. Run 'make test' to exercise the full request chain."
+	@echo "Ready. Run 'make demo' for the full walkthrough (or 'make test' for a quick smoke test)."
 
 ## Full teardown: delete the dedicated cluster (fastest, cleanest option).
 down: cluster-down
