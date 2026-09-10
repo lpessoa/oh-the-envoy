@@ -11,7 +11,8 @@ HELM := helm --kube-context $(KCTX)
 
 .PHONY: proto build docker-build k3d-import \
 	cluster-up cluster-down bootstrap-gateway-controller \
-	deploy-infra deploy-services deploy test clean up down status
+	deploy-infra deploy-services deploy test clean up down status \
+	token demo
 
 ## Regenerate Go code from proto/chain/v1/chain.proto via buf.
 proto:
@@ -92,10 +93,23 @@ status:
 
 ## Port-forward to the inbound gateway and exercise the full A -> B -> outbound gateway -> D chain.
 test:
-	$(KUBECTL) port-forward -n envoy-gateway-system svc/inbound-gateway 8888:80 & \
+	@$(KUBECTL) port-forward -n envoy-gateway-system svc/inbound-gateway 8888:80 >/dev/null 2>&1 & \
 	pf_pid=$$!; sleep 3; \
-	curl -s --http2-prior-knowledge -H "Host: inbound.local" -X POST http://localhost:8888/hello -d 'hello-from-make-test'; echo; \
+	tok=$$(curl -s -X POST -H "Host: inbound.local" http://localhost:8888/auth/token | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p'); \
+	curl -s --http2-prior-knowledge -H "Host: inbound.local" -H "Authorization: $$tok" -X POST http://localhost:8888/a/hello -d 'hello-from-make-test'; echo; \
 	kill $$pf_pid
+
+## Mint a JWT via the (open) /auth route and print an export-able line.
+token:
+	@$(KUBECTL) port-forward -n envoy-gateway-system svc/inbound-gateway 8888:80 >/dev/null 2>&1 & \
+	pf_pid=$$!; sleep 3; \
+	tok=$$(curl -s -X POST -H "Host: inbound.local" http://localhost:8888/auth/token | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p'); \
+	kill $$pf_pid; \
+	echo "export TOKEN=$$tok"
+
+## Run the five-step demo / E2E acceptance script.
+demo:
+	KCTX=$(KCTX) ./scripts/demo.sh
 
 ## Remove just this project's Kubernetes resources, keeping the cluster and
 ## gateway controller running (useful for iterating without a full rebuild).
