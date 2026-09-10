@@ -9,9 +9,7 @@ import (
 	"log"
 
 	chainv1 "envoy-experiment/gen/chain/v1"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"envoy-experiment/internal/egress"
 )
 
 const hopName = "service-b"
@@ -36,11 +34,7 @@ func (s *Server) Process(ctx context.Context, req *chainv1.ChainRequest) (*chain
 	log.Printf("[%s] trace=%s payload=%q hops=%v -> dialing outbound gateway %s (authority=%s)",
 		hopName, req.GetTraceId(), req.GetPayload(), req.GetHops(), s.OutboundGatewayAddr, s.ServiceDAuthority)
 
-	conn, err := grpc.NewClient(
-		s.OutboundGatewayAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithAuthority(s.ServiceDAuthority),
-	)
+	conn, err := egress.Dial(s.OutboundGatewayAddr, s.ServiceDAuthority)
 	if err != nil {
 		return nil, fmt.Errorf("%s: dial outbound gateway: %w", hopName, err)
 	}
