@@ -17,6 +17,14 @@ backend:
   name: service-d
   port: 9000
 
+# gRPC methods routed by the egress gateway, one GRPCRoute rule each. Both
+# currently target the same backend but are independently reconfigurable.
+grpcMethods:
+  - service: chain.v1.ChainService
+    method: Process
+  - service: chain.v1.ChainService
+    method: ProcessDirect
+
 # :authority (Host) value clients must dial with for the GRPCRoute to match
 # and forward to service-d. service-b sets this via grpc.WithAuthority(...).
 hostname: "service-d.internal"

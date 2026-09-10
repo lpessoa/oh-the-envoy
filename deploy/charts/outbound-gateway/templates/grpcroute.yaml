@@ -9,6 +9,12 @@ spec:
   hostnames:
     - {{ .Values.hostname | quote }}
   rules:
-    - backendRefs:
-        - name: {{ .Values.backend.name }}
-          port: {{ .Values.backend.port }}
+{{- range .Values.grpcMethods }}
+    - matches:
+        - method:
+            service: {{ .service }}
+            method: {{ .method }}
+      backendRefs:
+        - name: {{ $.Values.backend.name }}
+          port: {{ $.Values.backend.port }}
+{{- end }}
