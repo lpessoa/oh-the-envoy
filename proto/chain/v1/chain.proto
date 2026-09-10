@@ -9,6 +9,9 @@ option go_package = "envoy-experiment/gen/chain/v1;chainv1";
 // before calling service-b over gRPC.
 service ChainService {
   rpc Process(ChainRequest) returns (ChainResponse);
+  // ProcessDirect is the "extra route" on service-d, used by service-c via
+  // the outbound gateway. Same messages, distinguishable response text.
+  rpc ProcessDirect(ChainRequest) returns (ChainResponse);
 }
 
 message ChainRequest {

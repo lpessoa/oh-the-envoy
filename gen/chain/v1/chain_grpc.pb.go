@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	ChainService_Process_FullMethodName = "/chain.v1.ChainService/Process"
+	ChainService_Process_FullMethodName       = "/chain.v1.ChainService/Process"
+	ChainService_ProcessDirect_FullMethodName = "/chain.v1.ChainService/ProcessDirect"
 )
 
 // ChainServiceClient is the client API for ChainService service.
@@ -27,6 +28,9 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ChainServiceClient interface {
 	Process(ctx context.Context, in *ChainRequest, opts ...grpc.CallOption) (*ChainResponse, error)
+	// ProcessDirect is the "extra route" on service-d, used by service-c via
+	// the outbound gateway. Same messages, distinguishable response text.
+	ProcessDirect(ctx context.Context, in *ChainRequest, opts ...grpc.CallOption) (*ChainResponse, error)
 }
 
 type chainServiceClient struct {
@@ -46,11 +50,23 @@ func (c *chainServiceClient) Process(ctx context.Context, in *ChainRequest, opts
 	return out, nil
 }
 
+func (c *chainServiceClient) ProcessDirect(ctx context.Context, in *ChainRequest, opts ...grpc.CallOption) (*ChainResponse, error) {
+	out := new(ChainResponse)
+	err := c.cc.Invoke(ctx, ChainService_ProcessDirect_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ChainServiceServer is the server API for ChainService service.
 // All implementations must embed UnimplementedChainServiceServer
 // for forward compatibility
 type ChainServiceServer interface {
 	Process(context.Context, *ChainRequest) (*ChainResponse, error)
+	// ProcessDirect is the "extra route" on service-d, used by service-c via
+	// the outbound gateway. Same messages, distinguishable response text.
+	ProcessDirect(context.Context, *ChainRequest) (*ChainResponse, error)
 	mustEmbedUnimplementedChainServiceServer()
 }
 
@@ -60,6 +76,9 @@ type UnimplementedChainServiceServer struct {
 
 func (UnimplementedChainServiceServer) Process(context.Context, *ChainRequest) (*ChainResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Process not implemented")
+}
+func (UnimplementedChainServiceServer) ProcessDirect(context.Context, *ChainRequest) (*ChainResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProcessDirect not implemented")
 }
 func (UnimplementedChainServiceServer) mustEmbedUnimplementedChainServiceServer() {}
 
@@ -92,6 +111,24 @@ func _ChainService_Process_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ChainService_ProcessDirect_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ChainRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChainServiceServer).ProcessDirect(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChainService_ProcessDirect_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChainServiceServer).ProcessDirect(ctx, req.(*ChainRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ChainService_ServiceDesc is the grpc.ServiceDesc for ChainService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -102,6 +139,10 @@ var ChainService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Process",
 			Handler:    _ChainService_Process_Handler,
+		},
+		{
+			MethodName: "ProcessDirect",
+			Handler:    _ChainService_ProcessDirect_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

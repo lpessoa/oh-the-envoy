@@ -29,3 +29,13 @@ func (s *Server) Process(ctx context.Context, req *chainv1.ChainRequest) (*chain
 		Hops:    hops,
 	}, nil
 }
+
+func (s *Server) ProcessDirect(ctx context.Context, req *chainv1.ChainRequest) (*chainv1.ChainResponse, error) {
+	log.Printf("[%s] (direct route) trace=%s payload=%q hops=%v", hopName, req.GetTraceId(), req.GetPayload(), req.GetHops())
+
+	hops := append(append([]string{}, req.GetHops()...), hopName)
+	return &chainv1.ChainResponse{
+		Message: "hello from " + hopName + " (direct route), payload=" + req.GetPayload(),
+		Hops:    hops,
+	}, nil
+}
