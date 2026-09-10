@@ -8,11 +8,15 @@ SERVICES := service-a service-b service-c service-d token-service
 GOBIN := $(shell go env GOPATH)/bin
 KUBECTL := kubectl --context $(KCTX)
 HELM := helm --kube-context $(KCTX)
+# Client-side mTLS flags for every curl that enters through the ingress.
+# --resolve pins inbound.local to the local port-forward so TLS SNI and the
+# server cert's SAN (inbound.local) line up.
+TLSFLAGS := --cacert .certs/ca.crt --cert .certs/client.crt --key .certs/client.key --resolve inbound.local:8888:127.0.0.1
 
 .PHONY: proto build docker-build k3d-import \
 	cluster-up cluster-down bootstrap-gateway-controller \
 	deploy-infra deploy-services deploy test clean up down status \
-	token demo
+	token demo certs
 
 ## Regenerate Go code from proto/chain/v1/chain.proto via buf.
 proto:
@@ -67,8 +71,20 @@ deploy-services:
 	$(KUBECTL) apply -f deploy/k8s/namespace.yaml
 	$(KUBECTL) apply -f deploy/k8s/service-a.yaml -f deploy/k8s/service-b.yaml -f deploy/k8s/service-c.yaml -f deploy/k8s/service-d.yaml -f deploy/k8s/token-service.yaml
 
-## Install both per-instance Envoy Gateway Helm releases.
-deploy-infra:
+## Generate the demo mTLS PKI (CA + server + client certs) into .certs/.
+certs:
+	./scripts/gen-certs.sh
+
+## Install both per-instance Envoy Gateway Helm releases. The inbound gateway
+## terminates mTLS, so its server cert and client-validation CA are loaded as
+## Secrets first (from the git-ignored .certs/ directory).
+deploy-infra: certs
+	$(KUBECTL) create secret tls inbound-gateway-tls -n $(NAMESPACE) \
+		--cert=.certs/server.crt --key=.certs/server.key \
+		--dry-run=client -o yaml | $(KUBECTL) apply -f -
+	$(KUBECTL) create secret generic inbound-gateway-ca -n $(NAMESPACE) \
+		--from-file=ca.crt=.certs/ca.crt \
+		--dry-run=client -o yaml | $(KUBECTL) apply -f -
 	$(HELM) upgrade --install inbound-gateway deploy/charts/inbound-gateway
 	$(HELM) upgrade --install outbound-gateway deploy/charts/outbound-gateway
 
@@ -93,17 +109,17 @@ status:
 
 ## Port-forward to the inbound gateway and exercise the full A -> B -> outbound gateway -> D chain.
 test:
-	@$(KUBECTL) port-forward -n envoy-gateway-system svc/inbound-gateway 8888:80 >/dev/null 2>&1 & \
+	@$(KUBECTL) port-forward -n envoy-gateway-system svc/inbound-gateway 8888:443 >/dev/null 2>&1 & \
 	pf_pid=$$!; sleep 3; \
-	tok=$$(curl -s -X POST -H "Host: inbound.local" http://localhost:8888/auth/token | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p'); \
-	curl -s --http2-prior-knowledge -H "Host: inbound.local" -H "Authorization: Bearer $$tok" -X POST http://localhost:8888/a/hello -d 'hello-from-make-test'; echo; \
+	tok=$$(curl -s $(TLSFLAGS) -X POST https://inbound.local:8888/auth/token | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p'); \
+	curl -s $(TLSFLAGS) -H "Authorization: Bearer $$tok" -X POST https://inbound.local:8888/a/hello -d 'hello-from-make-test'; echo; \
 	kill $$pf_pid
 
 ## Mint a JWT via the (open) /auth route and print an export-able line.
 token:
-	@$(KUBECTL) port-forward -n envoy-gateway-system svc/inbound-gateway 8888:80 >/dev/null 2>&1 & \
+	@$(KUBECTL) port-forward -n envoy-gateway-system svc/inbound-gateway 8888:443 >/dev/null 2>&1 & \
 	pf_pid=$$!; sleep 3; \
-	tok=$$(curl -s -X POST -H "Host: inbound.local" http://localhost:8888/auth/token | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p'); \
+	tok=$$(curl -s $(TLSFLAGS) -X POST https://inbound.local:8888/auth/token | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p'); \
 	kill $$pf_pid; \
 	echo "export TOKEN=$$tok"
 

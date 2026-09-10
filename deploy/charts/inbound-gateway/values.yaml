@@ -10,7 +10,18 @@ gatewayClassName: envoy
 createGatewayClass: false
 
 listener:
-  port: 80
+  port: 443
+  # Envoy Gateway names the proxy container port after the listener:
+  # <protocol>-<port>. The stable proxy Service targets it by name.
+  portName: https-443
+
+# mTLS at the ingress. Both Secrets are created by `make deploy-infra` from
+# the git-ignored .certs/ directory (see scripts/gen-certs.sh):
+#   certSecretName  kubernetes.io/tls Secret with the server cert/key
+#   caSecretName    Secret with ca.crt used to validate client certificates
+tls:
+  certSecretName: inbound-gateway-tls
+  caSecretName: inbound-gateway-ca
 
 # Hostname all routes match. The demo sends "Host: inbound.local".
 hostname: "inbound.local"

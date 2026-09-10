@@ -6,9 +6,15 @@ metadata:
 spec:
   gatewayClassName: {{ .Values.gatewayClassName }}
   listeners:
-    - name: http
-      protocol: HTTP
+    - name: https
+      protocol: HTTPS
       port: {{ .Values.listener.port }}
+      hostname: {{ .Values.hostname | quote }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: {{ .Values.tls.certSecretName }}
       allowedRoutes:
         namespaces:
           from: Same

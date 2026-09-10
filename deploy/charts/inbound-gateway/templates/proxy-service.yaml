@@ -14,4 +14,4 @@ spec:
     gateway.envoyproxy.io/owning-gateway-namespace: {{ .Values.namespace }}
   ports:
     - port: {{ .Values.listener.port }}
-      targetPort: http-{{ .Values.listener.port }}
+      targetPort: {{ .Values.listener.portName | default (printf "http-%v" .Values.listener.port) }}

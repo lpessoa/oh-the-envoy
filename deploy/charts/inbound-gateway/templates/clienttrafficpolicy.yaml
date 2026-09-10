@@ -1,0 +1,18 @@
+# Enforces mutual TLS on the Gateway's listener: clients must present a
+# certificate signed by the CA in the referenced Secret or the TLS handshake
+# is rejected before any routing or JWT logic runs.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: {{ .Values.gatewayName }}-mtls
+  namespace: {{ .Values.namespace }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .Values.gatewayName }}
+  tls:
+    clientValidation:
+      caCertificateRefs:
+        - kind: Secret
+          name: {{ .Values.tls.caSecretName }}

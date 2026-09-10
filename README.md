@@ -1,20 +1,21 @@
 # envoy-experiment
 
 A Go project demonstrating two independent Envoy Gateway instances on a
-disposable k3d cluster — **inbound-gateway** (ingress, JWT-enforcing) and
-**outbound-gateway** (egress, method-matched) — fronting a five-service
-sandbox. The inbound gateway dispatches `/auth` (open, token minting), `/a`
-(JWT-protected, gRPC fan-out chain), and `/c` (JWT-protected, short direct
-chain); the outbound gateway routes gRPC calls to service-d by matching on
-method name (`Process` vs `ProcessDirect`) after clients dial it with an
-overridden `:authority`.
+disposable k3d cluster — **inbound-gateway** (ingress, mTLS-terminating and
+JWT-enforcing) and **outbound-gateway** (egress, method-matched) — fronting a
+five-service sandbox. The inbound gateway requires a client certificate on
+every connection (mutual TLS), then dispatches `/auth` (open, token minting),
+`/a` (JWT-protected, gRPC fan-out chain), and `/c` (JWT-protected, short
+direct chain); the outbound gateway routes gRPC calls to service-d by
+matching on method name (`Process` vs `ProcessDirect`) after clients dial it
+with an overridden `:authority`.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     client([client])
-    subgraph ingress["inbound-gateway (Envoy) — JWT enforced on /a and /c"]
+    subgraph ingress["inbound-gateway (Envoy) — mTLS terminated, JWT enforced on /a and /c"]
         rAuth["/auth/*"]
         rA["/a/*"]
         rC["/c/*"]
@@ -29,7 +30,7 @@ flowchart LR
     end
     D["service-d\ngRPC"]
 
-    client -->|"HTTP/2 + Bearer"| ingress
+    client -->|"mTLS (client cert) + HTTP/2 + Bearer"| ingress
     rAuth --> tokensvc
     rA --> A
     rC --> C
@@ -45,6 +46,10 @@ flowchart LR
 ```
 
 ## Sequence diagrams
+
+Every `client → inbound-gateway` arrow below rides a mutual-TLS connection:
+the handshake already verified the client certificate against the demo CA
+before the first byte of HTTP reached the gateway.
 
 ### Path A — `/a/hello` (gateway → service-a → service-b → egress `Process` → service-d)
 
@@ -116,6 +121,19 @@ enforcement point in front of all outbound gRPC traffic, and because the
 path is independently visible and reconfigurable at the routing layer
 without touching application code.
 
+**mTLS authenticates the machine; JWT authorizes the request.** The two
+layers are deliberately independent. The listener terminates TLS with a
+server certificate (`inbound-gateway-tls` Secret) and a
+`ClientTrafficPolicy` requires every client to present a certificate signed
+by the demo CA (`inbound-gateway-ca` Secret) — connections without one die
+at the handshake, before any HTTP routing, JWT check, or service code runs.
+The JWT `SecurityPolicy` then decides per route what an authenticated
+*connection* may call. That is why `/auth` needs a client cert but no token:
+transport identity is cluster-entry policy, tokens are application policy.
+All key material is generated locally into the git-ignored `.certs/`
+directory by `scripts/gen-certs.sh` and loaded as Secrets by
+`make deploy-infra` — nothing is committed.
+
 **JWT lives in a per-route `SecurityPolicy`, not in the services.**
 `inbound-gateway`'s `SecurityPolicy` targets only the `HTTPRoute`s marked
 `requireJWT: true` (`/a`, `/c`), validating RS256 JWTs against a remote JWKS
@@ -131,19 +149,21 @@ private key material lives in the repo, and restarting the pod rotates the
 keypair — a convenient way to demonstrate that previously minted tokens stop
 validating once the JWKS changes.
 
-**Stable Service + named `targetPort http-80`.** Envoy Gateway auto-creates
+**Stable Service + named `targetPort`.** Envoy Gateway auto-creates
 a Service per Gateway whose name includes a non-deterministic hash, so each
 chart also defines a stable-named Service (`inbound-gateway` /
 `outbound-gateway`, in `envoy-gateway-system`) selecting the same proxy pods
 via the `gateway.envoyproxy.io/owning-gateway-name` label. Its `targetPort`
-must be the named port `http-80` (not a bare number), because that's the
-name Envoy Gateway gives the proxy container's listener port (`10080`
-internally) — this is what service-b/service-c dial and what `kubectl
+must be the *named* port Envoy Gateway gives the proxy container's listener
+— `https-443` for the inbound gateway's HTTPS listener, `http-80` for the
+outbound one — not a bare number (the container listens on 10443/10080
+internally). This is what service-b/service-c dial and what `kubectl
 port-forward` targets.
 
 ## Prerequisites
 
-- `docker`, `k3d`, `helm`, `kubectl`, `go`, `buf` on your PATH.
+- `docker`, `k3d`, `helm`, `kubectl`, `go`, `buf`, `openssl` on your PATH
+  (see [Configuring buf](#configuring-buf) for the proto toolchain).
 - Nothing else — this project creates and destroys its own dedicated k3d
   cluster, named `envoy-experiment` (configurable via `CLUSTER=` on any
   `make` target). It never touches any other cluster you may have.
@@ -152,8 +172,8 @@ port-forward` targets.
 
 ```
 make up      # create dedicated k3d cluster, install Envoy Gateway controller,
-             # build/import images, deploy services + both gateway instances
-make demo    # five-step JWT walkthrough / E2E acceptance script
+             # generate demo mTLS certs, build/import images, deploy everything
+make demo    # six-step mTLS + JWT walkthrough / E2E acceptance script
 make down    # delete the dedicated k3d cluster (removes everything)
 ```
 
@@ -169,8 +189,9 @@ Individual steps, useful once the cluster already exists:
 - `make bootstrap-gateway-controller` — install/upgrade Envoy Gateway + GatewayClass.
 - `make proto`, `make build`, `make docker-build`, `make k3d-import`
 - `make deploy-services`, `make deploy-infra`, `make deploy` (build+import+apply, cluster must already exist)
-- `make token` — mint a JWT via the open `/auth` route, printed as `export TOKEN=...`.
-- `make demo` — run `scripts/demo.sh`, the five-step JWT walkthrough / E2E acceptance test.
+- `make certs` — generate the demo mTLS PKI (CA + server + client certs) into `.certs/` (idempotent; delete the dir to rotate).
+- `make token` — mint a JWT via the open `/auth` route (client cert required), printed as `export TOKEN=...`.
+- `make demo` — run `scripts/demo.sh`, the six-step mTLS + JWT walkthrough / E2E acceptance test.
 - `make test` — quick single-shot exercise of the full path-A chain through the inbound gateway.
 - `make clean` — remove this project's k8s resources, keep the cluster and gateway controller running.
 - `make status` — quick health check (pods, gateways, routes).
@@ -178,29 +199,47 @@ Individual steps, useful once the cluster already exists:
 ## Demo walkthrough
 
 `make demo` runs `scripts/demo.sh`, which port-forwards `svc/inbound-gateway`
-(in `envoy-gateway-system`) to `localhost:8888` and sends `Host:
-inbound.local` on every request. It exercises five steps:
+(in `envoy-gateway-system`) to local port `8888` and drives every request
+through the mTLS listener. The samples below assume the flags are collected
+once:
 
-**1. Mint a token (open `/auth` route)**
 ```bash
-curl -s -X POST -H "Host: inbound.local" http://localhost:8888/auth/token
+TLS=(--cacert .certs/ca.crt --cert .certs/client.crt --key .certs/client.key \
+     --resolve inbound.local:8888:127.0.0.1)
+```
+
+`--resolve` pins `inbound.local` to the port-forward so TLS SNI matches the
+server certificate's SAN; the URL's hostname doubles as the `Host` header,
+and HTTP/2 is negotiated via ALPN. The script exercises six steps:
+
+**0. No client certificate → handshake rejected**
+```bash
+curl -sS --cacert .certs/ca.crt --resolve inbound.local:8888:127.0.0.1 \
+  -X POST https://inbound.local:8888/auth/token
+```
+Exercises: the `ClientTrafficPolicy`'s client-certificate validation. The
+request never reaches routing — curl exits non-zero with a TLS alert.
+
+**1. Mint a token (open `/auth` route, mTLS still required)**
+```bash
+curl -s "${TLS[@]}" -X POST https://inbound.local:8888/auth/token
 ```
 Exercises: `client → inbound-gateway → /auth (no JWT required) → token-service`.
 Expected: JSON containing `"token_type":"Bearer"` and an `access_token`.
 
 **2. No token → 401**
 ```bash
-curl -s -o /dev/null -w '%{http_code}' --http2-prior-knowledge \
-  -H "Host: inbound.local" http://localhost:8888/a/hello
+curl -s -o /dev/null -w '%{http_code}' \
+  "${TLS[@]}" https://inbound.local:8888/a/hello
 ```
 Exercises: `client → inbound-gateway` JWT check on `/a`, short-circuited
 before reaching service-a. Expected: `401`.
 
 **3. Path A full cycle**
 ```bash
-curl -s --http2-prior-knowledge -H "Host: inbound.local" \
+curl -s "${TLS[@]}" \
   -H "Authorization: Bearer $TOKEN" \
-  -X POST http://localhost:8888/a/hello -d 'ping-a'
+  -X POST https://inbound.local:8888/a/hello -d 'ping-a'
 ```
 Exercises: `client → inbound-gateway (JWT OK) → service-a → service-b (gRPC
 Process, direct) → outbound-gateway (GRPCRoute Process rule) → service-d`.
@@ -209,9 +248,9 @@ Expected: JSON containing
 
 **4. Path C short cycle**
 ```bash
-curl -s --http2-prior-knowledge -H "Host: inbound.local" \
+curl -s "${TLS[@]}" \
   -H "Authorization: Bearer $TOKEN" \
-  -X POST http://localhost:8888/c/hello -d 'ping-c'
+  -X POST https://inbound.local:8888/c/hello -d 'ping-c'
 ```
 Exercises: `client → inbound-gateway (JWT OK) → service-c → outbound-gateway
 (GRPCRoute ProcessDirect rule) → service-d`. Expected: JSON containing
@@ -220,9 +259,9 @@ substring `(direct route)`.
 
 **5. Tampered token → 401**
 ```bash
-curl -s -o /dev/null -w '%{http_code}' --http2-prior-knowledge \
-  -H "Host: inbound.local" -H "Authorization: Bearer ${TOKEN}tampered" \
-  http://localhost:8888/a/hello
+curl -s -o /dev/null -w '%{http_code}' \
+  "${TLS[@]}" -H "Authorization: Bearer ${TOKEN}tampered" \
+  https://inbound.local:8888/a/hello
 ```
 Exercises: `client → inbound-gateway` signature verification against the
 JWKS fetched from token-service, rejecting a token whose signature no longer
@@ -230,6 +269,12 @@ matches. Expected: `401`.
 
 ## Failure modes
 
+- **Client cert signed by a different CA (or none).** The TLS handshake
+  fails before any HTTP exchange — curl reports a TLS alert rather than an
+  HTTP status. If `make demo` fails at step 0's inverse (real requests
+  rejected), the Secrets in the cluster and the files in `.certs/` have
+  likely diverged: rerun `make deploy-infra` (or `rm -rf .certs && make
+  deploy-infra` to rotate everything).
 - **JWKS fetch lag at first request.** The gateway fetches and caches the
   JWKS from token-service lazily; the very first JWT-protected request after
   a fresh deploy may be slower (or transiently fail) while that fetch
@@ -260,9 +305,10 @@ internal/tokenservice/            RS256 JWT minting + JWKS endpoint, in-memory k
 internal/egress/                  Shared gRPC dial helper (:authority override) for gateway egress
 internal/envutil/                 Tiny env-var helper
 deploy/k8s/                       Namespace + Deployments/Services for the five Go services
-deploy/charts/inbound-gateway/    Helm chart: Gateway + HTTPRoutes (/auth, /a, /c) + JWT SecurityPolicy
+deploy/charts/inbound-gateway/    Helm chart: Gateway (HTTPS + mTLS) + HTTPRoutes (/auth, /a, /c) + JWT SecurityPolicy + ClientTrafficPolicy
 deploy/charts/outbound-gateway/   Helm chart: Gateway + GRPCRoute (Process, ProcessDirect method rules)
-scripts/demo.sh                   Five-step JWT demo / E2E acceptance script (used by `make demo`)
+scripts/gen-certs.sh              Generates the demo mTLS PKI into .certs/ (git-ignored)
+scripts/demo.sh                   Six-step mTLS + JWT demo / E2E acceptance script (used by `make demo`)
 docs/superpowers/                 Design spec and plan for the JWT multi-route feature
 Dockerfile                        Multi-stage build, select service via --build-arg SERVICE=
 Makefile                          proto/build/docker-build/k3d-import/deploy/token/demo/test/clean targets
@@ -273,14 +319,51 @@ Envoy Gateway controller and `envoy` `GatewayClass`, installed once per
 cluster by `make bootstrap-gateway-controller` (run automatically as part of
 `make up`).
 
-## Regenerating proto code
+## Configuring buf
+
+All gRPC/protobuf code in `gen/` is generated by [buf](https://buf.build) —
+never edited by hand. Two files drive it:
+
+- **`buf.yaml`** — declares the module: `proto/` is the root of the proto
+  tree, with lint and breaking-change rules. It is what lets you run
+  `buf lint` / `buf breaking` against `proto/chain/v1/chain.proto`.
+- **`buf.gen.yaml`** — declares *what to generate*: it invokes the local
+  plugins `protoc-gen-go` (messages) and `protoc-gen-go-grpc` (client/server
+  stubs), writing into `gen/` with `paths=source_relative` so import paths
+  mirror the proto tree (`gen/chain/v1`).
+
+### One-time toolchain setup
+
+```bash
+# buf itself (macOS)
+brew install buf
+
+# the two code-generation plugins, installed into $GOPATH/bin
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+```
+
+The plugins do NOT need to be on your everyday PATH: the Makefile's `proto`
+target prepends `$GOPATH/bin` for the invocation —
+
+```make
+proto:
+	PATH="$$PATH:$(GOBIN)" buf generate
+```
+
+### Day-to-day workflow
 
 Edit `proto/chain/v1/chain.proto`, then:
+
+```bash
+make proto     # regenerate gen/chain/v1/*.pb.go
+go build ./... # confirm services still compile against the new contract
 ```
-make proto
-```
-(requires `protoc-gen-go` and `protoc-gen-go-grpc` on `$GOPATH/bin`, invoked
-by `buf` per `buf.gen.yaml`).
+
+Adding a new RPC is a three-step change: declare it in the `.proto`, run
+`make proto`, implement the new method on the server that owns it (see
+`ProcessDirect` in `internal/serviced/server.go` for a worked example —
+including how the egress `GRPCRoute` gets a matching per-method rule).
 
 ## Cleanup
 

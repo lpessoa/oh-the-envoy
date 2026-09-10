@@ -4,3 +4,4 @@
 /service-d
 /token-service
 *.log
+.certs/
