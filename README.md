@@ -45,6 +45,18 @@ flowchart LR
     style egress fill:#8250df,color:#fff
 ```
 
+<details>
+<summary>▶ Watch the traffic flow: animated version of the diagram above</summary>
+
+[![Animated architecture diagram showing a request lighting each hop as traffic flows through the two Envoy gateways](docs/diagrams/architecture.svg)](docs/diagrams/architecture/architecture.svg)
+
+*The same topology, animated: a request lights each hop as traffic arrives — the
+`/a` fan-out, the `/c` short chain, `/auth` minting, the dashed JWKS fetch, and
+the static "locked" mTLS entry. GitHub renders only the first frame inline —
+click the image to play it. Details: [`docs/diagrams/architecture`](docs/diagrams/architecture).*
+
+</details>
+
 ## Sequence diagrams
 
 Every `client → inbound-gateway` arrow below rides a mutual-TLS connection:
@@ -81,6 +93,19 @@ sequenceDiagram
     end
 ```
 
+<details>
+<summary>▶ Watch the traffic flow: animated version of the sequence above</summary>
+
+[![Animated Path A sequence: the request descends the lifelines and the response climbs back, with the JWT 401 short-circuit branch and an accumulating hops chip](docs/diagrams/path-a.svg)](docs/diagrams/path-a/path-a.svg)
+
+*The same exchange as a flow over time: each arrow draws across the gap and the
+receiving actor pulses as traffic lands, the response climbs back, the amber JWT
+beat marks validation, the **401 short-circuit** draws back when the token is
+missing/invalid, and a hops chip accumulates each service. Click to play.
+Details: [`docs/diagrams/path-a`](docs/diagrams/path-a).*
+
+</details>
+
 ### Path C — `/c/hello` (gateway → service-c → egress `ProcessDirect` → service-d)
 
 ```mermaid
@@ -101,6 +126,18 @@ sequenceDiagram
     c-->>gw: 200 JSON (hops+=service-c(response))
     gw-->>client: 200 JSON
 ```
+
+<details>
+<summary>▶ Watch the traffic flow — animated version of the sequence above</summary>
+
+[![Animated Path C sequence: the short direct chain descends the lifelines and the response climbs back with an accumulating hops chip](docs/diagrams/path-c.svg)](docs/diagrams/path-c/path-c.svg)
+
+*The same exchange as a flow over time: the short `ProcessDirect` chain draws hop
+by hop down the lifelines, each actor pulsing as traffic lands, and the response
+climbs back — with the amber JWT beat and a hops chip. Click to play.
+Details: [`docs/diagrams/path-c`](docs/diagrams/path-c).*
+
+</details>
 
 ## Rationale
 
