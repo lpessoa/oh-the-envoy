@@ -53,29 +53,37 @@ already present) extends to check for the new files too.
 
 ### 2. Gateway extraction (`ClientTrafficPolicy`)
 
-Add `tls.clientCertificate.forwardClientCertDetails` to the existing
-`inbound-gateway-mtls` `ClientTrafficPolicy`:
+Add `headers.xForwardedClientCert` to the existing `inbound-gateway-mtls`
+`ClientTrafficPolicy` (verified against the actual Envoy Gateway v1.2.5 CRD
+schema — the field lives under `spec.headers`, not `spec.tls`):
 
 ```yaml
-tls:
-  clientValidation:
-    caCertificateRefs:
-      - kind: Secret
-        name: {{ .Values.tls.caSecretName }}
-  clientCertificate:
-    forwardClientCertDetails:
-      mode: SanitizeSet      # discard any client-supplied XFCC; set our own
-      details:
-        - Subject            # DN, contains CN=<name>
-        - Hash                # SHA-256 fingerprint of the leaf cert
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .Values.gatewayName }}
+  tls:
+    clientValidation:
+      caCertificateRefs:
+        - kind: Secret
+          name: {{ .Values.tls.caSecretName }}
+  headers:
+    xForwardedClientCert:
+      mode: SanitizeSet         # discard any client-supplied XFCC; set our own
+      certDetailsToAdd:
+        - Subject               # DN, contains CN=<name>
 ```
 
-`SanitizeSet` ensures no client can spoof the header themselves — Envoy
-always overwrites it with the details of the cert it just validated during
-the TLS handshake. This is a native Envoy Gateway feature; no Lua/wasm
-extension is required. The result is a standard
-`x-forwarded-client-cert` (XFCC) header on every request forwarded to
-service-a/service-c, e.g.:
+`Hash` (the SHA-256 fingerprint of the leaf cert) is always included by
+Envoy automatically once any details are forwarded, so it doesn't need to
+be listed in `certDetailsToAdd` (whose allowed values are `Subject`,
+`Cert`, `Chain`, `DNS`, `URI`). `SanitizeSet` ensures no client can spoof
+the header themselves — Envoy always overwrites it with the details of the
+cert it just validated during the TLS handshake. This is a native Envoy
+Gateway feature; no Lua/wasm extension is required. The result is a
+standard `x-forwarded-client-cert` (XFCC) header on every request forwarded
+to service-a/service-c, e.g.:
 
 ```
 x-forwarded-client-cert: Hash=ab12...;Subject="CN=alice"
