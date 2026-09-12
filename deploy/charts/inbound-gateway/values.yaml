@@ -54,3 +54,18 @@ jwt:
   issuer: http://token-service.envoy-experiment.svc.cluster.local:8080
   audience: envoy-experiment
   jwksURI: http://token-service.envoy-experiment.svc.cluster.local:8080/auth/jwks.json
+# Local (per-Envoy-instance) rate limiting, keyed by client-certificate CN
+# (via the x-forwarded-client-cert header set by the ClientTrafficPolicy —
+# see the mTLS multi-cert client identity feature). `routes` lists which
+# route names (from the `routes` list above) this policy targets. Leave
+# empty to disable rate limiting entirely.
+rateLimit:
+  routes:
+    - route-a
+    - route-c
+  perClient:
+    - cn: alice
+      requestsPerMinute: 10
+    - cn: bob
+      requestsPerMinute: 10
+  defaultRequestsPerMinute: 5
