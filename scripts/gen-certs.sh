@@ -3,6 +3,8 @@
 #   ca.crt/ca.key         demo certificate authority
 #   server.crt/server.key ingress server cert (SAN: inbound.local)
 #   client.crt/client.key client cert the demo presents to the gateway
+#   client-alice.crt/client-alice.key client cert for CN=alice
+#   client-bob.crt/client-bob.key     client cert for CN=bob
 # Idempotent: skips generation when .certs/ is already populated.
 set -euo pipefail
 

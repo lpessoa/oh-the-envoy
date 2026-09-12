@@ -32,9 +32,9 @@ func New(serviceBAddr string) *Handler {
 }
 
 type chainResult struct {
-	Message  string               `json:"message"`
-	Hops     []string             `json:"hops"`
-	Protocol string               `json:"received_protocol"`
+	Message  string              `json:"message"`
+	Hops     []string            `json:"hops"`
+	Protocol string              `json:"received_protocol"`
 	Client   *certident.Identity `json:"client,omitempty"`
 }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Six-step demo of the mTLS + JWT protected multi-route sandbox. Doubles as
+# Seven-step demo of the mTLS + JWT protected multi-route sandbox. Doubles as
 # the E2E acceptance test: exits non-zero if any expectation fails.
 set -u
 KCTX="${KCTX:-k3d-envoy-experiment}"
@@ -63,8 +63,8 @@ check "tampered token rejected" "401" "$CODE"
 echo "== 6. Distinct client identities (alice vs bob) surfaced by the gateway =="
 ALICE_TLS=(--cacert "$CERTS/ca.crt" --cert "$CERTS/client-alice.crt" --key "$CERTS/client-alice.key" --resolve "inbound.local:${PORT}:127.0.0.1")
 BOB_TLS=(--cacert "$CERTS/ca.crt" --cert "$CERTS/client-bob.crt" --key "$CERTS/client-bob.key" --resolve "inbound.local:${PORT}:127.0.0.1")
-ALICE_RESP=$(curl -s "${ALICE_TLS[@]}" -H "$HOSTHDR" -H "Authorization: ******" -X POST "$BASE/a/hello" -d 'ping-alice')
-BOB_RESP=$(curl -s "${BOB_TLS[@]}" -H "$HOSTHDR" -H "Authorization: ******" -X POST "$BASE/a/hello" -d 'ping-bob')
+ALICE_RESP=$(curl -s "${ALICE_TLS[@]}" -H "$HOSTHDR" -H "Authorization: Bearer $TOKEN" -X POST "$BASE/a/hello" -d 'ping-alice')
+BOB_RESP=$(curl -s "${BOB_TLS[@]}" -H "$HOSTHDR" -H "Authorization: Bearer $TOKEN" -X POST "$BASE/a/hello" -d 'ping-bob')
 check "alice identified by gateway" '"client":{"cn":"alice"' "$ALICE_RESP"
 check "bob identified by gateway" '"client":{"cn":"bob"' "$BOB_RESP"
 

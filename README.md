@@ -130,6 +130,9 @@ at the handshake, before any HTTP routing, JWT check, or service code runs.
 The JWT `SecurityPolicy` then decides per route what an authenticated
 *connection* may call. That is why `/auth` needs a client cert but no token:
 transport identity is cluster-entry policy, tokens are application policy.
+All key material is generated locally into the git-ignored `.certs/`
+directory by `scripts/gen-certs.sh` and loaded as Secrets by
+`make deploy-infra` — nothing is committed.
 
 **Client-certificate identity rides the XFCC header to the first hop
 only.** `inbound-gateway`'s `ClientTrafficPolicy` also sets
@@ -143,9 +146,6 @@ stays deliberately shallow: it does not propagate past the first hop
 (service-b, service-d, and token-service never see it), and it is not a
 second authentication path — JWT still gates `/a` and `/c`; the cert only
 answers "who is this," not "what may they do."
-All key material is generated locally into the git-ignored `.certs/`
-directory by `scripts/gen-certs.sh` and loaded as Secrets by
-`make deploy-infra` — nothing is committed.
 
 **JWT lives in a per-route `SecurityPolicy`, not in the services.**
 `inbound-gateway`'s `SecurityPolicy` targets only the `HTTPRoute`s marked
@@ -186,7 +186,7 @@ port-forward` targets.
 ```
 make up      # create dedicated k3d cluster, install Envoy Gateway controller,
              # generate demo mTLS certs, build/import images, deploy everything
-make demo    # six-step mTLS + JWT walkthrough / E2E acceptance script
+make demo    # seven-step mTLS + JWT walkthrough / E2E acceptance script
 make down    # delete the dedicated k3d cluster (removes everything)
 ```
 
@@ -204,7 +204,7 @@ Individual steps, useful once the cluster already exists:
 - `make deploy-services`, `make deploy-infra`, `make deploy` (build+import+apply, cluster must already exist)
 - `make certs` — generate the demo mTLS PKI (CA + server + client certs) into `.certs/` (idempotent; delete the dir to rotate).
 - `make token` — mint a JWT via the open `/auth` route (client cert required), printed as `export TOKEN=...`.
-- `make demo` — run `scripts/demo.sh`, the six-step mTLS + JWT walkthrough / E2E acceptance test.
+- `make demo` — run `scripts/demo.sh`, the seven-step mTLS + JWT walkthrough / E2E acceptance test.
 - `make test` — quick single-shot exercise of the full path-A chain through the inbound gateway.
 - `make clean` — remove this project's k8s resources, keep the cluster and gateway controller running.
 - `make status` — quick health check (pods, gateways, routes).
@@ -223,7 +223,7 @@ TLS=(--cacert .certs/ca.crt --cert .certs/client.crt --key .certs/client.key \
 
 `--resolve` pins `inbound.local` to the port-forward so TLS SNI matches the
 server certificate's SAN; the URL's hostname doubles as the `Host` header,
-and HTTP/2 is negotiated via ALPN. The script exercises six steps:
+and HTTP/2 is negotiated via ALPN. The script exercises seven steps:
 
 **0. No client certificate → handshake rejected**
 ```bash
@@ -280,6 +280,23 @@ Exercises: `client → inbound-gateway` signature verification against the
 JWKS fetched from token-service, rejecting a token whose signature no longer
 matches. Expected: `401`.
 
+**6. Distinct client identities (alice vs bob) surfaced by the gateway**
+```bash
+curl -s --cert .certs/client-alice.crt --key .certs/client-alice.key \
+  "${TLS[@]}" -H "Authorization: ******" \
+  -X POST https://inbound.local:8888/a/hello -d 'ping-alice'
+curl -s --cert .certs/client-bob.crt --key .certs/client-bob.key \
+  "${TLS[@]}" -H "Authorization: ******" \
+  -X POST https://inbound.local:8888/a/hello -d 'ping-bob'
+```
+Exercises: the `ClientTrafficPolicy`'s `xForwardedClientCert` forwarding —
+each request presents a different client leaf cert signed by the same CA,
+and `inbound-gateway` rewrites the XFCC header with that cert's subject.
+`internal/certident` parses it into a CN + fingerprint pair, and service-a
+attaches it to the response. Expected: JSON containing `"client":{"cn":"alice"`
+for the first request and `"client":{"cn":"bob"` for the second — same JWT,
+same route, distinct identities.
+
 ## Failure modes
 
 - **Client cert signed by a different CA (or none).** The TLS handshake
@@ -322,7 +339,7 @@ deploy/k8s/                       Namespace + Deployments/Services for the five 
 deploy/charts/inbound-gateway/    Helm chart: Gateway (HTTPS + mTLS) + HTTPRoutes (/auth, /a, /c) + JWT SecurityPolicy + ClientTrafficPolicy
 deploy/charts/outbound-gateway/   Helm chart: Gateway + GRPCRoute (Process, ProcessDirect method rules)
 scripts/gen-certs.sh              Generates the demo mTLS PKI into .certs/ (git-ignored)
-scripts/demo.sh                   Six-step mTLS + JWT demo / E2E acceptance script (used by `make demo`)
+scripts/demo.sh                   Seven-step mTLS + JWT demo / E2E acceptance script (used by `make demo`)
 docs/superpowers/                 Design spec and plan for the JWT multi-route feature
 Dockerfile                        Multi-stage build, select service via --build-arg SERVICE=
 Makefile                          proto/build/docker-build/k3d-import/deploy/token/demo/test/clean targets
