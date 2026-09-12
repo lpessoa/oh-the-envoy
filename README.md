@@ -315,6 +315,27 @@ attaches it to the response. Expected: JSON containing `"client":{"cn":"alice"`
 for the first request and `"client":{"cn":"bob"` for the second — same JWT,
 same route, distinct identities.
 
+**7. Rate limit enforced per client identity (bob: 10 req/min)**
+```bash
+for i in $(seq 1 9); do
+  curl -s --cacert .certs/ca.crt --cert .certs/client-bob.crt \
+    --key .certs/client-bob.key --resolve inbound.local:8888:127.0.0.1 \
+    -H "Authorization: ******" -o /dev/null -w '%{http_code}\n' \
+    -X POST https://inbound.local:8888/a/hello -d "burst-$i"
+done
+curl -s --cacert .certs/ca.crt --cert .certs/client-bob.crt \
+  --key .certs/client-bob.key --resolve inbound.local:8888:127.0.0.1 \
+  -H "Authorization: ******" -o /dev/null -w '%{http_code}\n' \
+  -X POST https://inbound.local:8888/a/hello -d 'burst-10'
+```
+Exercises: the `BackendTrafficPolicy`'s Local rate limit on `route-a`,
+keyed by the `.*CN=bob.*` regex over `x-forwarded-client-cert`. Bob's
+budget is 10 requests/minute; step 6 already spent one of those on the
+`/a/hello` route, so only 9 more succeed here before the 11th request
+overall is rejected. Expected: `200` for each of the 9 loop requests,
+then `429` for the final one — enforced entirely by the gateway, before
+service-a is ever reached.
+
 ## Failure modes
 
 - **Client cert signed by a different CA (or none).** The TLS handshake

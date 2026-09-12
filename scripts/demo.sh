@@ -69,17 +69,20 @@ check "alice identified by gateway" '"client":{"cn":"alice"' "$ALICE_RESP"
 check "bob identified by gateway" '"client":{"cn":"bob"' "$BOB_RESP"
 
 echo "== 7. Rate limit enforced per client identity (bob: 10 req/min) =="
+# Step 6 already spent one of bob's 10 tokens on the /a/hello route (the
+# "bob identified by gateway" request above), so only 9 remain here before
+# the 11th request overall (10th in this loop) should trip the 429.
 rl_pass=true
-for i in $(seq 1 10); do
+for i in $(seq 1 9); do
   CODE=$(curl -s "${BOB_TLS[@]}" -o /dev/null -w '%{http_code}' -H "$HOSTHDR" -H "Authorization: Bearer $TOKEN" -X POST "$BASE/a/hello" -d "burst-$i")
   if [[ "$CODE" != "200" ]]; then
     echo "      request $i got $CODE, want 200"; rl_pass=false
   fi
 done
-if $rl_pass; then echo "PASS  first 10 bob requests succeeded"; pass=$((pass+1)); else echo "FAIL  first 10 bob requests"; fail=$((fail+1)); fi
+if $rl_pass; then echo "PASS  remaining bob budget (9 requests) succeeded"; pass=$((pass+1)); else echo "FAIL  remaining bob budget (9 requests)"; fail=$((fail+1)); fi
 
-CODE=$(curl -s "${BOB_TLS[@]}" -o /dev/null -w '%{http_code}' -H "$HOSTHDR" -H "Authorization: Bearer $TOKEN" -X POST "$BASE/a/hello" -d 'burst-11')
-check "11th bob request rate-limited" "429" "$CODE"
+CODE=$(curl -s "${BOB_TLS[@]}" -o /dev/null -w '%{http_code}' -H "$HOSTHDR" -H "Authorization: Bearer $TOKEN" -X POST "$BASE/a/hello" -d 'burst-10')
+check "11th bob request overall rate-limited" "429" "$CODE"
 
 echo ""
 echo "demo: $pass passed, $fail failed"
