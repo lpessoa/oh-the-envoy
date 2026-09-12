@@ -55,3 +55,70 @@ func TestHandlerCallsProcessDirectAndReportsHops(t *testing.T) {
 		t.Errorf("message = %q, want direct route marker", body.Message)
 	}
 }
+
+func TestHandlerAddsClientIdentityWhenXFCCPresent(t *testing.T) {
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	gs := grpc.NewServer()
+	chainv1.RegisterChainServiceServer(gs, &fakeGateway{})
+	go gs.Serve(lis)
+	defer gs.Stop()
+
+	h := New(lis.Addr().String(), "service-d.internal")
+	req := httptest.NewRequest("POST", "/c/hello", strings.NewReader("ping"))
+	req.Header.Set("x-forwarded-client-cert", `Hash=ef56gh78;Subject="CN=bob"`)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != 200 {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	var body struct {
+		Client *struct {
+			CN          string `json:"cn"`
+			Fingerprint string `json:"fingerprint"`
+		} `json:"client"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body.Client == nil {
+		t.Fatal("client field missing, want populated")
+	}
+	if body.Client.CN != "bob" || body.Client.Fingerprint != "ef56gh78" {
+		t.Errorf("client = %+v, want cn=bob fingerprint=ef56gh78", *body.Client)
+	}
+}
+
+func TestHandlerOmitsClientIdentityWhenXFCCAbsent(t *testing.T) {
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	gs := grpc.NewServer()
+	chainv1.RegisterChainServiceServer(gs, &fakeGateway{})
+	go gs.Serve(lis)
+	defer gs.Stop()
+
+	h := New(lis.Addr().String(), "service-d.internal")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest("POST", "/c/hello", strings.NewReader("ping")))
+
+	if rr.Code != 200 {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	var body struct {
+		Client *struct {
+			CN          string `json:"cn"`
+			Fingerprint string `json:"fingerprint"`
+		} `json:"client"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body.Client != nil {
+		t.Errorf("client = %+v, want nil (no XFCC header)", *body.Client)
+	}
+}
