@@ -282,11 +282,13 @@ matches. Expected: `401`.
 
 **6. Distinct client identities (alice vs bob) surfaced by the gateway**
 ```bash
-curl -s --cert .certs/client-alice.crt --key .certs/client-alice.key \
-  "${TLS[@]}" -H "Authorization: ******" \
+curl -s --cacert .certs/ca.crt --cert .certs/client-alice.crt \
+  --key .certs/client-alice.key --resolve inbound.local:8888:127.0.0.1 \
+  -H "Authorization: ******" \
   -X POST https://inbound.local:8888/a/hello -d 'ping-alice'
-curl -s --cert .certs/client-bob.crt --key .certs/client-bob.key \
-  "${TLS[@]}" -H "Authorization: ******" \
+curl -s --cacert .certs/ca.crt --cert .certs/client-bob.crt \
+  --key .certs/client-bob.key --resolve inbound.local:8888:127.0.0.1 \
+  -H "Authorization: ******" \
   -X POST https://inbound.local:8888/a/hello -d 'ping-bob'
 ```
 Exercises: the `ClientTrafficPolicy`'s `xForwardedClientCert` forwarding —
