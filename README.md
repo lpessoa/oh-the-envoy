@@ -149,7 +149,8 @@ answers "who is this," not "what may they do."
 
 **Rate limiting keys off client-certificate CN, matched by regex, in Local
 mode.** `inbound-gateway`'s `BackendTrafficPolicy` rate-limits `/a` and
-`/c`: alice and bob each get 10 requests/minute, matched against the
+`/c`: alice and bob each get 10 requests/minute per route (the buckets are
+independent — 10 on `/a` plus another 10 on `/c`), matched against the
 `x-forwarded-client-cert` header by a CN-only regex (`.*CN=<name>.*`)
 rather than an exact value, because the header's `Hash=` fingerprint
 changes every time `scripts/gen-certs.sh` regenerates certs — exact
@@ -317,24 +318,26 @@ same route, distinct identities.
 
 **7. Rate limit enforced per client identity (bob: 10 req/min)**
 ```bash
-for i in $(seq 1 9); do
+for i in $(seq 1 15); do
   curl -s --cacert .certs/ca.crt --cert .certs/client-bob.crt \
     --key .certs/client-bob.key --resolve inbound.local:8888:127.0.0.1 \
     -H "Authorization: ******" -o /dev/null -w '%{http_code}\n' \
     -X POST https://inbound.local:8888/a/hello -d "burst-$i"
 done
-curl -s --cacert .certs/ca.crt --cert .certs/client-bob.crt \
-  --key .certs/client-bob.key --resolve inbound.local:8888:127.0.0.1 \
-  -H "Authorization: ******" -o /dev/null -w '%{http_code}\n' \
-  -X POST https://inbound.local:8888/a/hello -d 'burst-10'
 ```
 Exercises: the `BackendTrafficPolicy`'s Local rate limit on `route-a`,
 keyed by the `.*CN=bob.*` regex over `x-forwarded-client-cert`. Bob's
 budget is 10 requests/minute; step 6 already spent one of those on the
-`/a/hello` route, so only 9 more succeed here before the 11th request
-overall is rejected. Expected: `200` for each of the 9 loop requests,
-then `429` for the final one — enforced entirely by the gateway, before
-service-a is ever reached.
+`/a/hello` route, and Envoy's Local bucket refills continuously (~1 token
+every 6 s) rather than resetting on a hard minute boundary, so the exact
+success count can drift by a token or two. The script therefore bursts up
+to 15 requests and asserts two things: more than 5 succeed (proving bob
+drew from his own 10/min bucket, not the shared 5/min default) and a
+`429` is eventually returned (proving the limit is enforced) — all at the
+gateway, before service-a is ever reached. Note: re-running the demo
+within the same minute starts with bob's bucket drained, so this step
+(and step 6's bob request) can fail until the window refills — wait 60
+seconds and retry.
 
 ## Failure modes
 
