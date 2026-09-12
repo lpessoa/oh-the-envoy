@@ -8,7 +8,8 @@ set -euo pipefail
 
 CERTS_DIR="${CERTS_DIR:-.certs}"
 
-if [[ -f "$CERTS_DIR/ca.crt" && -f "$CERTS_DIR/server.crt" && -f "$CERTS_DIR/client.crt" ]]; then
+if [[ -f "$CERTS_DIR/ca.crt" && -f "$CERTS_DIR/server.crt" && -f "$CERTS_DIR/client.crt" \
+      && -f "$CERTS_DIR/client-alice.crt" && -f "$CERTS_DIR/client-bob.crt" ]]; then
   echo "certs already present in $CERTS_DIR, skipping (delete the dir to regenerate)"
   exit 0
 fi
@@ -39,6 +40,24 @@ openssl x509 -req -days 365 \
   -in "$CERTS_DIR/client.csr" \
   -CA "$CERTS_DIR/ca.crt" -CAkey "$CERTS_DIR/ca.key" -CAcreateserial \
   -out "$CERTS_DIR/client.crt" >/dev/null 2>&1
+
+echo "== generating named client cert: alice =="
+openssl req -newkey rsa:2048 -nodes \
+  -subj "/CN=alice" \
+  -keyout "$CERTS_DIR/client-alice.key" -out "$CERTS_DIR/client-alice.csr" >/dev/null 2>&1
+openssl x509 -req -days 365 \
+  -in "$CERTS_DIR/client-alice.csr" \
+  -CA "$CERTS_DIR/ca.crt" -CAkey "$CERTS_DIR/ca.key" -CAcreateserial \
+  -out "$CERTS_DIR/client-alice.crt" >/dev/null 2>&1
+
+echo "== generating named client cert: bob =="
+openssl req -newkey rsa:2048 -nodes \
+  -subj "/CN=bob" \
+  -keyout "$CERTS_DIR/client-bob.key" -out "$CERTS_DIR/client-bob.csr" >/dev/null 2>&1
+openssl x509 -req -days 365 \
+  -in "$CERTS_DIR/client-bob.csr" \
+  -CA "$CERTS_DIR/ca.crt" -CAkey "$CERTS_DIR/ca.key" -CAcreateserial \
+  -out "$CERTS_DIR/client-bob.crt" >/dev/null 2>&1
 
 rm -f "$CERTS_DIR"/*.csr "$CERTS_DIR"/*.srl
 echo "demo PKI written to $CERTS_DIR/"
