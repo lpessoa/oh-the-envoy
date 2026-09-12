@@ -138,8 +138,13 @@ no template errors.
 
 - [ ] **Step 3: Verify the disable-by-empty-list escape hatch**
 
+Note: `--set rateLimit.routes={}` does NOT produce an empty list in Helm —
+it produces a one-element list `[""]` (a documented Helm `--set` parsing
+quirk for list-typed values), which is truthy and renders one empty-named
+route. Use `--set-json` or a values file to represent a real empty list:
+
 ```bash
-helm template inbound-gateway deploy/charts/inbound-gateway --set rateLimit.routes={} | grep -c "kind: BackendTrafficPolicy"
+helm template inbound-gateway deploy/charts/inbound-gateway --set-json 'rateLimit.routes=[]' | grep -c "kind: BackendTrafficPolicy"
 ```
 Expected: `0` (the template renders nothing when `rateLimit.routes` is
 empty).
