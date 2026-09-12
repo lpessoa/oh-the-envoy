@@ -11,6 +11,7 @@ HOSTHDR="Host: inbound.local"
 # inbound.local to the local port-forward so SNI matches the server cert SAN.
 TLS=(--cacert "$CERTS/ca.crt" --cert "$CERTS/client.crt" --key "$CERTS/client.key" --resolve "inbound.local:${PORT}:127.0.0.1")
 [[ -f "$CERTS/client.crt" ]] || { echo "missing $CERTS/client.crt — run 'make certs' first"; exit 1; }
+[[ -f "$CERTS/client-alice.crt" && -f "$CERTS/client-bob.crt" ]] || { echo "missing $CERTS/client-{alice,bob}.crt — run 'make certs' first"; exit 1; }
 pass=0; fail=0
 
 check() { # check <label> <expected> <actual>
@@ -58,6 +59,14 @@ check "path C direct route marker" "(direct route)" "$RESP"
 echo "== 5. Tampered token -> 401 =="
 CODE=$(curl -s "${TLS[@]}" -o /dev/null -w '%{http_code}' -H "$HOSTHDR" -H "Authorization: Bearer ${TOKEN}tampered" "$BASE/a/hello")
 check "tampered token rejected" "401" "$CODE"
+
+echo "== 6. Distinct client identities (alice vs bob) surfaced by the gateway =="
+ALICE_TLS=(--cacert "$CERTS/ca.crt" --cert "$CERTS/client-alice.crt" --key "$CERTS/client-alice.key" --resolve "inbound.local:${PORT}:127.0.0.1")
+BOB_TLS=(--cacert "$CERTS/ca.crt" --cert "$CERTS/client-bob.crt" --key "$CERTS/client-bob.key" --resolve "inbound.local:${PORT}:127.0.0.1")
+ALICE_RESP=$(curl -s "${ALICE_TLS[@]}" -H "$HOSTHDR" -H "Authorization: ******" -X POST "$BASE/a/hello" -d 'ping-alice')
+BOB_RESP=$(curl -s "${BOB_TLS[@]}" -H "$HOSTHDR" -H "Authorization: ******" -X POST "$BASE/a/hello" -d 'ping-bob')
+check "alice identified by gateway" '"client":{"cn":"alice"' "$ALICE_RESP"
+check "bob identified by gateway" '"client":{"cn":"bob"' "$BOB_RESP"
 
 echo ""
 echo "demo: $pass passed, $fail failed"
