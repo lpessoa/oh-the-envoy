@@ -100,7 +100,13 @@ package certident
 // standard XFCC header value as produced by Envoy's forwardClientCertDetails
 // (SanitizeSet mode, details: [Subject, Hash]). Returns ok=false if the
 // header is empty or doesn't contain a parseable Subject/CN.
-func Parse(xfcc string) (cn, fingerprint string, ok bool)
+func Parse(xfcc string) (Identity, bool)
+
+// where Identity carries the JSON tags handlers embed directly:
+type Identity struct {
+	CN          string `json:"cn"`
+	Fingerprint string `json:"fingerprint"`
+}
 ```
 
 Implementation: split the XFCC value on `;`, extract the `Hash=` and
