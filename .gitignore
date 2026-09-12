@@ -5,3 +5,4 @@
 /token-service
 *.log
 .certs/
+.worktrees/
