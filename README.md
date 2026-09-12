@@ -130,6 +130,19 @@ at the handshake, before any HTTP routing, JWT check, or service code runs.
 The JWT `SecurityPolicy` then decides per route what an authenticated
 *connection* may call. That is why `/auth` needs a client cert but no token:
 transport identity is cluster-entry policy, tokens are application policy.
+
+**Client-certificate identity rides the XFCC header to the first hop
+only.** `inbound-gateway`'s `ClientTrafficPolicy` also sets
+`headers.xForwardedClientCert` (mode `SanitizeSet`, forwarding `Subject`;
+`Hash` is added automatically), so every request forwarded to service-a or
+service-c carries a `x-forwarded-client-cert` header Envoy itself
+generated from the certificate it just validated — never something a
+client could spoof. `internal/certident` parses it into a CN + fingerprint
+pair that both handlers add to their JSON response under `client`. This
+stays deliberately shallow: it does not propagate past the first hop
+(service-b, service-d, and token-service never see it), and it is not a
+second authentication path — JWT still gates `/a` and `/c`; the cert only
+answers "who is this," not "what may they do."
 All key material is generated locally into the git-ignored `.certs/`
 directory by `scripts/gen-certs.sh` and loaded as Secrets by
 `make deploy-infra` — nothing is committed.
@@ -297,13 +310,14 @@ matches. Expected: `401`.
 proto/chain/v1/chain.proto        Proto contract (source of truth: Process, ProcessDirect)
 gen/chain/v1/                     buf-generated Go code
 cmd/{service-a,service-b,service-c,service-d,token-service}/main.go   Entrypoints
+internal/certident/              Parses the gateway's XFCC header into a CN + fingerprint client identity
+internal/egress/                  Shared gRPC dial helper (:authority override) for gateway egress
+internal/envutil/                 Tiny env-var helper
 internal/servicea/                HTTP/2 handler -> gRPC call to service-b
 internal/serviceb/                gRPC server -> egresses to service-d via outbound gateway
 internal/servicec/                HTTP/2 handler -> egresses directly to service-d (ProcessDirect)
 internal/serviced/                Terminal gRPC server (Process + ProcessDirect)
 internal/tokenservice/            RS256 JWT minting + JWKS endpoint, in-memory keys
-internal/egress/                  Shared gRPC dial helper (:authority override) for gateway egress
-internal/envutil/                 Tiny env-var helper
 deploy/k8s/                       Namespace + Deployments/Services for the five Go services
 deploy/charts/inbound-gateway/    Helm chart: Gateway (HTTPS + mTLS) + HTTPRoutes (/auth, /a, /c) + JWT SecurityPolicy + ClientTrafficPolicy
 deploy/charts/outbound-gateway/   Helm chart: Gateway + GRPCRoute (Process, ProcessDirect method rules)
