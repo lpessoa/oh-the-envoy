@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Seven-step demo of the mTLS + JWT protected multi-route sandbox. Doubles as
+# Eight-step demo of the mTLS + JWT protected multi-route sandbox. Doubles as
 # the E2E acceptance test: exits non-zero if any expectation fails.
 set -u
 KCTX="${KCTX:-k3d-envoy-experiment}"

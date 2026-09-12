@@ -239,7 +239,7 @@ TLS=(--cacert .certs/ca.crt --cert .certs/client.crt --key .certs/client.key \
 
 `--resolve` pins `inbound.local` to the port-forward so TLS SNI matches the
 server certificate's SAN; the URL's hostname doubles as the `Host` header,
-and HTTP/2 is negotiated via ALPN. The script exercises seven steps:
+and HTTP/2 is negotiated via ALPN. The script exercises eight steps:
 
 **0. No client certificate → handshake rejected**
 ```bash
