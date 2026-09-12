@@ -68,6 +68,19 @@ BOB_RESP=$(curl -s "${BOB_TLS[@]}" -H "$HOSTHDR" -H "Authorization: Bearer $TOKE
 check "alice identified by gateway" '"client":{"cn":"alice"' "$ALICE_RESP"
 check "bob identified by gateway" '"client":{"cn":"bob"' "$BOB_RESP"
 
+echo "== 7. Rate limit enforced per client identity (bob: 10 req/min) =="
+rl_pass=true
+for i in $(seq 1 10); do
+  CODE=$(curl -s "${BOB_TLS[@]}" -o /dev/null -w '%{http_code}' -H "$HOSTHDR" -H "Authorization: Bearer $TOKEN" -X POST "$BASE/a/hello" -d "burst-$i")
+  if [[ "$CODE" != "200" ]]; then
+    echo "      request $i got $CODE, want 200"; rl_pass=false
+  fi
+done
+if $rl_pass; then echo "PASS  first 10 bob requests succeeded"; pass=$((pass+1)); else echo "FAIL  first 10 bob requests"; fail=$((fail+1)); fi
+
+CODE=$(curl -s "${BOB_TLS[@]}" -o /dev/null -w '%{http_code}' -H "$HOSTHDR" -H "Authorization: Bearer $TOKEN" -X POST "$BASE/a/hello" -d 'burst-11')
+check "11th bob request rate-limited" "429" "$CODE"
+
 echo ""
 echo "demo: $pass passed, $fail failed"
 [[ $fail -eq 0 ]]
