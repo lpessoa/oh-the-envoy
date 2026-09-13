@@ -15,8 +15,8 @@ TLSFLAGS := --cacert .certs/ca.crt --cert .certs/client.crt --key .certs/client.
 
 .PHONY: proto build docker-build k3d-import \
 	cluster-up cluster-down bootstrap-gateway-controller \
-	deploy-infra deploy-services deploy test clean up down status \
-	token demo certs
+	deploy-infra deploy-services deploy-observability deploy test clean up down status \
+	token demo certs grafana
 
 ## Regenerate Go code from proto/chain/v1/chain.proto via buf.
 proto:
@@ -60,16 +60,26 @@ cluster-down:
 	-k3d cluster delete $(CLUSTER)
 
 ## Install/upgrade the Envoy Gateway controller + GatewayClass (idempotent).
+## The EnvoyProxy telemetry config must exist before the GatewayClass that
+## references it via parametersRef.
 bootstrap-gateway-controller:
 	$(HELM) upgrade --install eg oci://docker.io/envoyproxy/gateway-helm --version v1.2.5 \
 		-n envoy-gateway-system --create-namespace
 	$(KUBECTL) wait --timeout=120s -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
+	$(KUBECTL) apply -f deploy/k8s/envoyproxy.yaml
 	$(KUBECTL) apply -f deploy/k8s/gatewayclass.yaml
 
 ## Apply namespace + all service Deployments/Services.
 deploy-services:
 	$(KUBECTL) apply -f deploy/k8s/namespace.yaml
 	$(KUBECTL) apply -f deploy/k8s/service-a.yaml -f deploy/k8s/service-b.yaml -f deploy/k8s/service-c.yaml -f deploy/k8s/service-d.yaml -f deploy/k8s/token-service.yaml
+
+## Deploy the self-contained observability stack (OTel Collector, Tempo,
+## Prometheus, Grafana) into the monitoring namespace. Runs before the
+## gateway controller bootstrap so the EnvoyProxy tracing backendRef
+## resolves to an existing Service.
+deploy-observability:
+	$(KUBECTL) apply -f deploy/k8s/observability/
 
 ## Generate the demo mTLS PKI (CA + server + client certs) into .certs/.
 certs:
@@ -93,9 +103,10 @@ deploy: docker-build k3d-import deploy-services deploy-infra
 
 ## Full unattended bring-up from zero: create the cluster, install the
 ## gateway controller, build/import images, and deploy services + gateways.
-up: cluster-up bootstrap-gateway-controller deploy
+up: cluster-up deploy-observability bootstrap-gateway-controller deploy
 	@echo ""
 	@echo "Ready. Run 'make demo' for the full walkthrough (or 'make test' for a quick smoke test)."
+	@echo "Browse metrics and traces with 'make grafana' -> http://localhost:3000"
 
 ## Full teardown: delete the dedicated cluster (fastest, cleanest option).
 down: cluster-down
@@ -106,6 +117,7 @@ status:
 	@echo "--- pods ---"; $(KUBECTL) get pods -n $(NAMESPACE) 2>&1 || true
 	@echo "--- gateways ---"; $(KUBECTL) get gateway -n $(NAMESPACE) 2>&1 || true
 	@echo "--- routes ---"; $(KUBECTL) get httproute,grpcroute -n $(NAMESPACE) 2>&1 || true
+	@echo "--- monitoring ---"; $(KUBECTL) get pods -n monitoring 2>&1 || true
 
 ## Port-forward to the inbound gateway and exercise the full A -> B -> outbound gateway -> D chain.
 test:
@@ -123,9 +135,15 @@ token:
 	kill $$pf_pid; \
 	echo "export TOKEN=$$tok"
 
-## Run the eight-step demo / E2E acceptance script.
+## Run the nine-step demo / E2E acceptance script.
 demo:
 	KCTX=$(KCTX) ./scripts/demo.sh
+
+## Port-forward Grafana (anonymous admin) to browse the provisioned gateway
+## dashboard and Tempo traces. Ctrl-C to stop.
+grafana:
+	@echo "Grafana: http://localhost:3000 (dashboard 'Envoy Gateway'; Explore -> Tempo for traces)"
+	$(KUBECTL) port-forward -n monitoring svc/grafana 3000:3000
 
 ## Remove just this project's Kubernetes resources, keeping the cluster and
 ## gateway controller running (useful for iterating without a full rebuild).
