@@ -123,7 +123,7 @@ token:
 	kill $$pf_pid; \
 	echo "export TOKEN=$$tok"
 
-## Run the five-step demo / E2E acceptance script.
+## Run the eight-step demo / E2E acceptance script.
 demo:
 	KCTX=$(KCTX) ./scripts/demo.sh
 

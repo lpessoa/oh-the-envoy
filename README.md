@@ -45,18 +45,6 @@ flowchart LR
     style egress fill:#8250df,color:#fff
 ```
 
-<details>
-<summary>▶ Watch the traffic flow: animated version of the diagram above</summary>
-
-[![Animated architecture diagram showing a request lighting each hop as traffic flows through the two Envoy gateways](docs/diagrams/architecture.svg)](docs/diagrams/architecture/architecture.svg)
-
-*The same topology, animated: a request lights each hop as traffic arrives — the
-`/a` fan-out, the `/c` short chain, `/auth` minting, the dashed JWKS fetch, and
-the static "locked" mTLS entry. GitHub renders only the first frame inline —
-click the image to play it. Details: [`docs/diagrams/architecture`](docs/diagrams/architecture).*
-
-</details>
-
 ## Sequence diagrams
 
 Every `client → inbound-gateway` arrow below rides a mutual-TLS connection:
@@ -93,19 +81,6 @@ sequenceDiagram
     end
 ```
 
-<details>
-<summary>▶ Watch the traffic flow: animated version of the sequence above</summary>
-
-[![Animated Path A sequence: the request descends the lifelines and the response climbs back, with the JWT 401 short-circuit branch and an accumulating hops chip](docs/diagrams/path-a.svg)](docs/diagrams/path-a/path-a.svg)
-
-*The same exchange as a flow over time: each arrow draws across the gap and the
-receiving actor pulses as traffic lands, the response climbs back, the amber JWT
-beat marks validation, the **401 short-circuit** draws back when the token is
-missing/invalid, and a hops chip accumulates each service. Click to play.
-Details: [`docs/diagrams/path-a`](docs/diagrams/path-a).*
-
-</details>
-
 ### Path C — `/c/hello` (gateway → service-c → egress `ProcessDirect` → service-d)
 
 ```mermaid
@@ -126,18 +101,6 @@ sequenceDiagram
     c-->>gw: 200 JSON (hops+=service-c(response))
     gw-->>client: 200 JSON
 ```
-
-<details>
-<summary>▶ Watch the traffic flow — animated version of the sequence above</summary>
-
-[![Animated Path C sequence: the short direct chain descends the lifelines and the response climbs back with an accumulating hops chip](docs/diagrams/path-c.svg)](docs/diagrams/path-c/path-c.svg)
-
-*The same exchange as a flow over time: the short `ProcessDirect` chain draws hop
-by hop down the lifelines, each actor pulsing as traffic lands, and the response
-climbs back — with the amber JWT beat and a hops chip. Click to play.
-Details: [`docs/diagrams/path-c`](docs/diagrams/path-c).*
-
-</details>
 
 ## Rationale
 
@@ -184,6 +147,23 @@ stays deliberately shallow: it does not propagate past the first hop
 second authentication path — JWT still gates `/a` and `/c`; the cert only
 answers "who is this," not "what may they do."
 
+**Rate limiting keys off client-certificate CN, matched by regex, in Local
+mode.** `inbound-gateway`'s `BackendTrafficPolicy` rate-limits `/a` and
+`/c`: alice and bob each get 10 requests/minute per route (the buckets are
+independent — 10 on `/a` plus another 10 on `/c`), matched against the
+`x-forwarded-client-cert` header by a CN-only regex (`.*CN=<name>.*`)
+rather than an exact value, because the header's `Hash=` fingerprint
+changes every time `scripts/gen-certs.sh` regenerates certs — exact
+matching would silently stop working after every rotation. Anyone else
+(e.g. the original shared `demo-client` cert) falls through to a 5
+requests/minute default rule. This uses Envoy Gateway's *Local* rate-limit
+mode (in-memory counters per Envoy instance) rather than *Global*
+(Redis-backed): Local is sufficient for a single-replica sandbox with a
+small, known set of client identities, and avoids adding Redis plus the
+rate-limit service to the cluster bootstrap. A caller who exceeds their
+budget gets `429` at the gateway, before the request reaches service-a or
+service-c.
+
 **JWT lives in a per-route `SecurityPolicy`, not in the services.**
 `inbound-gateway`'s `SecurityPolicy` targets only the `HTTPRoute`s marked
 `requireJWT: true` (`/a`, `/c`), validating RS256 JWTs against a remote JWKS
@@ -223,7 +203,7 @@ port-forward` targets.
 ```
 make up      # create dedicated k3d cluster, install Envoy Gateway controller,
              # generate demo mTLS certs, build/import images, deploy everything
-make demo    # seven-step mTLS + JWT walkthrough / E2E acceptance script
+make demo    # eight-step mTLS + JWT walkthrough / E2E acceptance script
 make down    # delete the dedicated k3d cluster (removes everything)
 ```
 
@@ -241,7 +221,7 @@ Individual steps, useful once the cluster already exists:
 - `make deploy-services`, `make deploy-infra`, `make deploy` (build+import+apply, cluster must already exist)
 - `make certs` — generate the demo mTLS PKI (CA + server + client certs) into `.certs/` (idempotent; delete the dir to rotate).
 - `make token` — mint a JWT via the open `/auth` route (client cert required), printed as `export TOKEN=...`.
-- `make demo` — run `scripts/demo.sh`, the seven-step mTLS + JWT walkthrough / E2E acceptance test.
+- `make demo` — run `scripts/demo.sh`, the eight-step mTLS + JWT walkthrough / E2E acceptance test.
 - `make test` — quick single-shot exercise of the full path-A chain through the inbound gateway.
 - `make clean` — remove this project's k8s resources, keep the cluster and gateway controller running.
 - `make status` — quick health check (pods, gateways, routes).
@@ -260,7 +240,7 @@ TLS=(--cacert .certs/ca.crt --cert .certs/client.crt --key .certs/client.key \
 
 `--resolve` pins `inbound.local` to the port-forward so TLS SNI matches the
 server certificate's SAN; the URL's hostname doubles as the `Host` header,
-and HTTP/2 is negotiated via ALPN. The script exercises seven steps:
+and HTTP/2 is negotiated via ALPN. The script exercises eight steps:
 
 **0. No client certificate → handshake rejected**
 ```bash
@@ -336,6 +316,29 @@ attaches it to the response. Expected: JSON containing `"client":{"cn":"alice"`
 for the first request and `"client":{"cn":"bob"` for the second — same JWT,
 same route, distinct identities.
 
+**7. Rate limit enforced per client identity (bob: 10 req/min)**
+```bash
+for i in $(seq 1 15); do
+  curl -s --cacert .certs/ca.crt --cert .certs/client-bob.crt \
+    --key .certs/client-bob.key --resolve inbound.local:8888:127.0.0.1 \
+    -H "Authorization: ******" -o /dev/null -w '%{http_code}\n' \
+    -X POST https://inbound.local:8888/a/hello -d "burst-$i"
+done
+```
+Exercises: the `BackendTrafficPolicy`'s Local rate limit on `route-a`,
+keyed by the `.*CN=bob.*` regex over `x-forwarded-client-cert`. Bob's
+budget is 10 requests/minute; step 6 already spent one of those on the
+`/a/hello` route, and Envoy's Local bucket refills continuously (~1 token
+every 6 s) rather than resetting on a hard minute boundary, so the exact
+success count can drift by a token or two. The script therefore bursts up
+to 15 requests and asserts two things: more than 5 succeed (proving bob
+drew from his own 10/min bucket, not the shared 5/min default) and a
+`429` is eventually returned (proving the limit is enforced) — all at the
+gateway, before service-a is ever reached. Note: re-running the demo
+within the same minute starts with bob's bucket drained, so this step
+(and step 6's bob request) can fail until the window refills — wait 60
+seconds and retry.
+
 ## Failure modes
 
 - **Client cert signed by a different CA (or none).** The TLS handshake
@@ -375,10 +378,10 @@ internal/servicec/                HTTP/2 handler -> egresses directly to service
 internal/serviced/                Terminal gRPC server (Process + ProcessDirect)
 internal/tokenservice/            RS256 JWT minting + JWKS endpoint, in-memory keys
 deploy/k8s/                       Namespace + Deployments/Services for the five Go services
-deploy/charts/inbound-gateway/    Helm chart: Gateway (HTTPS + mTLS) + HTTPRoutes (/auth, /a, /c) + JWT SecurityPolicy + ClientTrafficPolicy
+deploy/charts/inbound-gateway/    Helm chart: Gateway (HTTPS + mTLS) + HTTPRoutes (/auth, /a, /c) + JWT SecurityPolicy + ClientTrafficPolicy (mTLS + XFCC forwarding) + BackendTrafficPolicy (per-client-CN rate limiting)
 deploy/charts/outbound-gateway/   Helm chart: Gateway + GRPCRoute (Process, ProcessDirect method rules)
 scripts/gen-certs.sh              Generates the demo mTLS PKI into .certs/ (git-ignored)
-scripts/demo.sh                   Seven-step mTLS + JWT demo / E2E acceptance script (used by `make demo`)
+scripts/demo.sh                   Eight-step mTLS + JWT demo / E2E acceptance script (used by `make demo`)
 docs/superpowers/                 Design spec and plan for the JWT multi-route feature
 Dockerfile                        Multi-stage build, select service via --build-arg SERVICE=
 Makefile                          proto/build/docker-build/k3d-import/deploy/token/demo/test/clean targets

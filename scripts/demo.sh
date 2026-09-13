@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Seven-step demo of the mTLS + JWT protected multi-route sandbox. Doubles as
+# Eight-step demo of the mTLS + JWT protected multi-route sandbox. Doubles as
 # the E2E acceptance test: exits non-zero if any expectation fails.
 set -u
 KCTX="${KCTX:-k3d-envoy-experiment}"
@@ -67,6 +67,32 @@ ALICE_RESP=$(curl -s "${ALICE_TLS[@]}" -H "$HOSTHDR" -H "Authorization: Bearer $
 BOB_RESP=$(curl -s "${BOB_TLS[@]}" -H "$HOSTHDR" -H "Authorization: Bearer $TOKEN" -X POST "$BASE/a/hello" -d 'ping-bob')
 check "alice identified by gateway" '"client":{"cn":"alice"' "$ALICE_RESP"
 check "bob identified by gateway" '"client":{"cn":"bob"' "$BOB_RESP"
+
+echo "== 7. Rate limit enforced per client identity (bob: 10 req/min) =="
+# Bob's budget is 10 req/min on route-a. Step 6 already spent one token,
+# and Envoy's Local bucket refills continuously (~1 token every 6s), so
+# the exact success count before the first 429 can drift by a token or
+# two. Burst up to 15 requests and assert the limiter engages: more than
+# 5 successes proves bob got his own 10/min bucket (not the 5/min
+# default), and a 429 proves the limit is enforced. Re-running the demo
+# within the same minute starts with a drained bucket -- expect FAILs
+# here (and a 429 in step 6) until the window refills.
+rl_ok=0; rl_limited=no
+for i in $(seq 1 15); do
+  CODE=$(curl -s "${BOB_TLS[@]}" -o /dev/null -w '%{http_code}' -H "$HOSTHDR" -H "Authorization: Bearer $TOKEN" -X POST "$BASE/a/hello" -d "burst-$i")
+  if [[ "$CODE" == "200" ]]; then
+    rl_ok=$((rl_ok+1))
+  elif [[ "$CODE" == "429" ]]; then
+    rl_limited=yes; break
+  else
+    echo "      request $i got unexpected $CODE"; break
+  fi
+done
+if [[ "$rl_limited" == "yes" && $rl_ok -gt 5 ]]; then
+  echo "PASS  bob rate-limited after $rl_ok successes (429 observed)"; pass=$((pass+1))
+else
+  echo "FAIL  bob rate limit: successes=$rl_ok, 429 observed=$rl_limited (re-run within the same minute? wait 60s and retry)"; fail=$((fail+1))
+fi
 
 echo ""
 echo "demo: $pass passed, $fail failed"

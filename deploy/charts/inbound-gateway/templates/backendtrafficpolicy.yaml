@@ -1,0 +1,37 @@
+{{- if .Values.rateLimit.routes }}
+# Local rate limiting on the JWT-protected routes, keyed by client-cert CN
+# (from the x-forwarded-client-cert header the ClientTrafficPolicy sets).
+# Matches by regex on CN rather than exact header value because the
+# header's Hash= portion changes every time scripts/gen-certs.sh
+# regenerates certs. The final rule (no clientSelectors) is the catch-all
+# default for any caller not explicitly listed in perClient.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ .Values.gatewayName }}-ratelimit
+  namespace: {{ .Values.namespace }}
+spec:
+  targetRefs:
+    {{- range .Values.rateLimit.routes }}
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ $.Values.gatewayName }}-{{ . }}
+    {{- end }}
+  rateLimit:
+    type: Local
+    local:
+      rules:
+        {{- range .Values.rateLimit.perClient }}
+        - clientSelectors:
+            - headers:
+                - type: RegularExpression
+                  name: x-forwarded-client-cert
+                  value: ".*CN={{ .cn }}.*"
+          limit:
+            requests: {{ .requestsPerMinute }}
+            unit: Minute
+        {{- end }}
+        - limit:
+            requests: {{ .Values.rateLimit.defaultRequestsPerMinute }}
+            unit: Minute
+{{- end }}
