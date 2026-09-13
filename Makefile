@@ -16,7 +16,23 @@ TLSFLAGS := --cacert .certs/ca.crt --cert .certs/client.crt --key .certs/client.
 .PHONY: proto build docker-build k3d-import \
 	cluster-up cluster-down bootstrap-gateway-controller \
 	deploy-infra deploy-services deploy-observability deploy test clean up down status \
-	token demo certs grafana
+	token demo certs grafana help
+
+## Show available tasks and their descriptions.
+help:
+	@printf "Available tasks:\n\n"
+	@awk '/^## / { if (description == "") description = substr($$0, 4); next } \
+		/^[[:alnum:]_.-]+:/ { \
+			target = $$0; sub(/:.*/, "", target); \
+			if (description != "") { \
+				printf "%s\t%s\n", target, description; \
+			} \
+			description = ""; \
+		}' $(MAKEFILE_LIST) | sort | awk -F'\t' '{ \
+			desc = $$2; \
+			if (length(desc) > 80) desc = substr(desc, 1, 77) "..."; \
+			printf "  \033[1;36m%-28s\033[0m %s\n", $$1, desc; \
+		}'
 
 ## Regenerate Go code from proto/chain/v1/chain.proto via buf.
 proto:
