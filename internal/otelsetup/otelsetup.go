@@ -7,8 +7,10 @@ package otelsetup
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -30,11 +32,10 @@ func Init(ctx context.Context, serviceName string) func(context.Context) error {
 		return func(context.Context) error { return nil }
 	}
 
-	// Endpoint is a bare host:port (see deploy/k8s manifests); the demo
-	// collector speaks plaintext OTLP/gRPC.
+	// Endpoint is a URL (see deploy/k8s manifests); the http:// scheme
+	// selects plaintext OTLP/gRPC, matching the demo collector.
 	exporter, err := otlptracegrpc.New(ctx,
-		otlptracegrpc.WithEndpoint(endpoint),
-		otlptracegrpc.WithInsecure(),
+		otlptracegrpc.WithEndpointURL(endpoint),
 	)
 	if err != nil {
 		// Telemetry must never take the service down.
@@ -63,4 +64,14 @@ func Init(ctx context.Context, serviceName string) func(context.Context) error {
 
 	log.Printf("otelsetup: exporting traces for %s to %s", serviceName, endpoint)
 	return tp.Shutdown
+}
+
+// WrapHTTP instruments an HTTP handler with OTel server spans named after
+// the request ("GET /a/hello") instead of a per-service constant, so routes
+// stay distinguishable in the trace UI.
+func WrapHTTP(h http.Handler, operation string) http.Handler {
+	return otelhttp.NewHandler(h, operation,
+		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+			return r.Method + " " + r.URL.Path
+		}))
 }

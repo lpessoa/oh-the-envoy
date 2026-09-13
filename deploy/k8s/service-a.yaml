@@ -28,7 +28,7 @@ spec:
             - name: SERVICE_B_ADDR
               value: "service-b.envoy-experiment.svc.cluster.local:9000"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "otel-collector.monitoring.svc.cluster.local:4317"
+              value: "http://otel-collector.monitoring.svc.cluster.local:4317"
 ---
 apiVersion: v1
 kind: Service

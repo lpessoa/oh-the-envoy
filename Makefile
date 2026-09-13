@@ -60,9 +60,10 @@ cluster-down:
 	-k3d cluster delete $(CLUSTER)
 
 ## Install/upgrade the Envoy Gateway controller + GatewayClass (idempotent).
-## The EnvoyProxy telemetry config must exist before the GatewayClass that
-## references it via parametersRef.
-bootstrap-gateway-controller:
+## Depends on deploy-observability: envoyproxy.yaml's ReferenceGrant lives in
+## the monitoring namespace, and the EnvoyProxy telemetry config must exist
+## before the GatewayClass that references it via parametersRef.
+bootstrap-gateway-controller: deploy-observability
 	$(HELM) upgrade --install eg oci://docker.io/envoyproxy/gateway-helm --version v1.2.5 \
 		-n envoy-gateway-system --create-namespace
 	$(KUBECTL) wait --timeout=120s -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
@@ -103,7 +104,7 @@ deploy: docker-build k3d-import deploy-services deploy-infra
 
 ## Full unattended bring-up from zero: create the cluster, install the
 ## gateway controller, build/import images, and deploy services + gateways.
-up: cluster-up deploy-observability bootstrap-gateway-controller deploy
+up: cluster-up bootstrap-gateway-controller deploy
 	@echo ""
 	@echo "Ready. Run 'make demo' for the full walkthrough (or 'make test' for a quick smoke test)."
 	@echo "Browse metrics and traces with 'make grafana' -> http://localhost:3000"

@@ -110,7 +110,11 @@ for i in $(seq 1 10); do
   if [[ "$PROM_RESP" == *'"__name__":"envoy_cluster_upstream_rq_total"'* ]]; then metrics_ok=yes; break; fi
   sleep 3
 done
-check "gateway metrics scraped by Prometheus" "yes" "$metrics_ok"
+if [[ "$metrics_ok" == "yes" ]]; then
+  echo "PASS  gateway metrics scraped by Prometheus"; pass=$((pass+1))
+else
+  echo "FAIL  no gateway metrics in Prometheus after 30s (check 'kubectl get pods -n monitoring' and the port-forward)"; fail=$((fail+1))
+fi
 
 traces_ok=no
 for i in $(seq 1 10); do
@@ -118,7 +122,11 @@ for i in $(seq 1 10); do
   if [[ "$TEMPO_RESP" == *'"traceID"'* ]]; then traces_ok=yes; break; fi
   sleep 3
 done
-check "service-a traces stored in Tempo" "yes" "$traces_ok"
+if [[ "$traces_ok" == "yes" ]]; then
+  echo "PASS  service-a traces stored in Tempo"; pass=$((pass+1))
+else
+  echo "FAIL  no service-a traces in Tempo after 30s (check 'kubectl get pods -n monitoring' and the port-forward)"; fail=$((fail+1))
+fi
 
 echo ""
 echo "demo: $pass passed, $fail failed"

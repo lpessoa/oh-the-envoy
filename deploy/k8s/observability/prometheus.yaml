@@ -1,7 +1,9 @@
 # Prometheus: scrapes the Envoy Gateway proxy pods directly. When the
 # EnvoyProxy resource enables telemetry.metrics.prometheus, every proxy pod
-# serves Envoy stats at :19001/stats/prometheus. Pod discovery needs RBAC
-# (get/list/watch pods cluster-wide).
+# serves Envoy stats at :19001/stats/prometheus. Discovery is scoped to the
+# envoy-gateway-system namespace, but the RBAC is a ClusterRole on purpose:
+# that namespace is created later (by the gateway-controller bootstrap), and
+# a namespaced Role can't be applied before its namespace exists.
 apiVersion: v1
 kind: ServiceAccount
 metadata:

@@ -30,7 +30,7 @@ spec:
             - name: AUDIENCE
               value: "envoy-experiment"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "otel-collector.monitoring.svc.cluster.local:4317"
+              value: "http://otel-collector.monitoring.svc.cluster.local:4317"
 ---
 apiVersion: v1
 kind: Service

@@ -245,7 +245,7 @@ Individual steps, useful once the cluster already exists:
 - `make token` — mint a JWT via the open `/auth` route (client cert required), printed as `export TOKEN=...`.
 - `make demo` — run `scripts/demo.sh`, the nine-step mTLS + JWT + observability walkthrough / E2E acceptance test.
 - `make test` — quick single-shot exercise of the full path-A chain through the inbound gateway.
-- `make clean` — remove this project's k8s resources, keep the cluster and gateway controller running.
+- `make clean` — remove this project's k8s resources (services + gateways); the monitoring stack, EnvoyProxy config and gateway controller stay, so redeploys keep their telemetry history.
 - `make status` — quick health check (pods, gateways, routes, monitoring).
 - `make grafana` — port-forward Grafana to http://localhost:3000 (anonymous admin; provisioned `Envoy Gateway` dashboard + Tempo datasource for traces).
 
@@ -423,7 +423,7 @@ deploy/charts/inbound-gateway/    Helm chart: Gateway (HTTPS + mTLS) + HTTPRoute
 deploy/charts/outbound-gateway/   Helm chart: Gateway + GRPCRoute (Process, ProcessDirect method rules)
 scripts/gen-certs.sh              Generates the demo mTLS PKI into .certs/ (git-ignored)
 scripts/demo.sh                   Nine-step mTLS + JWT + observability demo / E2E acceptance script (used by `make demo`)
-docs/superpowers/                 Design spec and plan for the JWT multi-route feature
+docs/superpowers/                 Design specs + implementation plans (JWT routes, mTLS identity, rate limiting, observability)
 Dockerfile                        Multi-stage build, select service via --build-arg SERVICE=
 Makefile                          proto/build/docker-build/k3d-import/deploy/token/demo/test/clean targets
 ```
