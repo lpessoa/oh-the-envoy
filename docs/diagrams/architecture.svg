@@ -1,0 +1,254 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 540" role="img" preserveAspectRatio="xMidYMid meet" data-role="flow-map">
+  <title>Traffic flow through the two Envoy gateways</title>
+  <desc>A request enters over mutual TLS at the inbound gateway, is checked at the amber JWT gate on
+  /a and /c, fans through the application services to the outbound gateway, which routes gRPC to
+  service-d by method. Bright dots trace each request; every hop lights as traffic arrives. The
+  /auth route mints a token from the token-service, which the gateway also polls for JWKS keys.</desc>
+  <style>
+/* EV-TOKENS:START */
+:root {
+  /* Surfaces and ink */
+  --ev-bg: #020817; /* near-black slate canvas */
+  --ev-surface: #191426; /* plum lift over the canvas; diagram surface */
+  --ev-surface-2: #221b3e; /* second elevation step (gateway bodies) */
+  --ev-border: #29272a; /* hairlines, rules */
+  --ev-grid: #302a4d; /* outlines on surfaces */
+  --ev-ink: #f8fafc; /* foreground text */
+  --ev-muted: #94a3b8; /* muted / annotation text */
+
+  /* Brand violet: identity and structure (the Envoy gateways) */
+  --ev-primary: #6d28d9;
+  --ev-primary-bright: #9867e4;
+  --ev-primary-soft: #2a2246; /* neutral / soft node fill */
+  --ev-primary-soft-stroke: #7c6ac4; /* neutral / soft node stroke */
+
+  /* Highlight: the security beat — JWT validation, token minting, "look here" */
+  --ev-highlight: #f6a723;
+  --ev-highlight-soft: #4a3410;
+
+  /* Diagram roles */
+  --ev-role-a: #10b981; /* client (external source) */
+  --ev-role-a-stroke: #34d39a;
+  --ev-role-b: #38bdf8; /* application services (a / b / c / d) */
+  --ev-role-b-stroke: #7dd3fc;
+  --ev-role-c: #f472b6; /* token-service / auth support plane (JWKS) */
+  --ev-neutral: #8992aa; /* passive actor */
+
+  /* Flow */
+  --ev-flow: #a8a1cf; /* request arrows and connectors */
+  --ev-flow-strong: #f1edff; /* emphasized flow */
+
+  /* Typography */
+  --ev-font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --ev-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+  --ev-fs-title: 20px;
+  --ev-fs-label: 13px;
+  --ev-fs-mono: 12px;
+
+  /* Geometry (unitless values are SVG user units) */
+  --ev-radius: 8px;
+  --ev-radius-sm: 5px;
+  --ev-stroke: 1.5;
+  --ev-stroke-strong: 2.5;
+  --ev-node-w: 120;
+  --ev-node-h: 48;
+  --ev-gap: 24;
+
+  /* Timing */
+  --ev-dur: 1200ms;
+  --ev-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* EV-TOKENS:END */
+    text { text-rendering: geometricPrecision; stroke: none; }
+    .ev-canvas { fill: var(--ev-surface); stroke: var(--ev-grid); stroke-width: var(--ev-stroke); }
+    .ev-title { font-family: var(--ev-font); font-size: var(--ev-fs-title); font-weight: 600; fill: var(--ev-ink); }
+    .ev-label { font-family: var(--ev-font); font-size: var(--ev-fs-label); font-weight: 600; fill: var(--ev-ink); }
+    .ev-mono { font-family: var(--ev-mono); font-size: var(--ev-fs-mono); fill: var(--ev-muted); }
+    .ev-node { fill: var(--ev-primary-soft); stroke: var(--ev-primary-soft-stroke); stroke-width: var(--ev-stroke); }
+    .ev-node--a { fill: var(--ev-role-a); stroke: var(--ev-role-a-stroke); }
+    .ev-node--b { fill: var(--ev-role-b); stroke: var(--ev-role-b-stroke); }
+    .ev-node--c { fill: var(--ev-role-c); stroke: var(--ev-role-c); }
+    .ev-node--a .ev-label, .ev-node--b .ev-label, .ev-node--c .ev-label { fill: var(--ev-surface); }
+    .ev-node--a .ev-mono, .ev-node--b .ev-mono, .ev-node--c .ev-mono { fill: var(--ev-surface); }
+    .ev-zone { fill: var(--ev-surface-2); stroke: var(--ev-primary-bright); stroke-width: var(--ev-stroke); }
+    .ev-zone-title { font-family: var(--ev-font); font-size: var(--ev-fs-label); font-weight: 600; fill: var(--ev-primary-bright); }
+    .ev-route { fill: var(--ev-primary-soft); stroke: var(--ev-primary-soft-stroke); stroke-width: var(--ev-stroke); }
+    .ev-route--jwt { stroke: var(--ev-highlight); stroke-width: var(--ev-stroke-strong); }
+    .ev-jwt-tag { font-family: var(--ev-mono); font-size: var(--ev-fs-mono); fill: var(--ev-highlight); }
+    .ev-arrow { fill: none; stroke: var(--ev-flow); stroke-width: var(--ev-stroke); marker-end: url(#ev-head); }
+    .ev-arrow--mtls { stroke: var(--ev-primary-bright); stroke-width: var(--ev-stroke-strong); stroke-dasharray: 2 4; marker-end: url(#ev-head-v); }
+    .ev-arrow--jwks { stroke: var(--ev-role-c); stroke-dasharray: 6 5; marker-end: url(#ev-head-c); animation: ev-dash 1400ms linear infinite; }
+    .ev-mono--c { font-family: var(--ev-mono); font-size: var(--ev-fs-mono); fill: var(--ev-role-c); }
+    .ev-head { fill: var(--ev-flow); }
+    .ev-head-v { fill: var(--ev-primary-bright); }
+    .ev-head-c { fill: var(--ev-role-c); }
+    .ev-flow-dot { fill: var(--ev-flow-strong); opacity: 0; }
+    .ev-glow { fill: none; stroke: var(--ev-flow-strong); stroke-width: var(--ev-stroke-strong); opacity: 0; animation: ev-glow 3200ms var(--ev-ease) infinite; }
+    .ev-glow--client { animation-delay: 0ms; }
+    .ev-glow--in { animation-delay: 300ms; }
+    .ev-glow--auth { animation-delay: 600ms; }
+    .ev-glow--a { animation-delay: 800ms; }
+    .ev-glow--c { animation-delay: 800ms; }
+    .ev-glow--b { animation-delay: 1200ms; }
+    .ev-glow--out { animation-delay: 1700ms; }
+    .ev-glow--d { animation-delay: 2100ms; }
+    .ev-jwt-glow { fill: none; stroke: var(--ev-highlight); stroke-width: var(--ev-stroke-strong); opacity: 0; animation: ev-pulse 3200ms var(--ev-ease) infinite; animation-delay: 500ms; }
+    @keyframes ev-glow { 0% { opacity: 0; } 8% { opacity: 0.95; } 26% { opacity: 0; } 100% { opacity: 0; } }
+    @keyframes ev-pulse { 0% { opacity: 0; } 40% { opacity: 0.9; } 60% { opacity: 0.4; } 100% { opacity: 0; } }
+    @keyframes ev-dot { 0%, 86% { opacity: 1; } 92%, 97% { opacity: 0; } 100% { opacity: 1; } }
+    @keyframes ev-dash { to { stroke-dashoffset: -22; } }
+    @media (prefers-reduced-motion: reduce) {
+      .ev-glow, .ev-jwt-glow, .ev-arrow--jwks { animation: none; }
+      .ev-glow, .ev-jwt-glow { opacity: 0; }
+      .ev-flow-dot { display: none; }
+    }
+  </style>
+  <defs>
+    <marker id="ev-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="ev-head" d="M 0 0 L 10 5 L 0 10 z"/>
+    </marker>
+    <marker id="ev-head-v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="ev-head-v" d="M 0 0 L 10 5 L 0 10 z"/>
+    </marker>
+    <marker id="ev-head-c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="ev-head-c" d="M 0 0 L 10 5 L 0 10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="ev-canvas" x="1" y="1" width="1238" height="538" rx="14"/>
+  <text class="ev-title" x="40" y="50">Traffic flow — inbound gateway to egress</text>
+  <text class="ev-mono" x="40" y="72">one beat = var(--ev-dur) · watch a request light each hop</text>
+
+  <!-- Inbound gateway (Envoy) zone -->
+  <g data-role="gateway" data-gateway="inbound">
+    <rect class="ev-zone" x="260" y="110" width="220" height="390" rx="12"/>
+    <text class="ev-zone-title" x="370" y="134" text-anchor="middle">inbound-gateway (Envoy)</text>
+    <text class="ev-mono" x="370" y="152" text-anchor="middle">mTLS · JWT on /a, /c</text>
+    <!-- open route -->
+    <g>
+      <rect class="ev-route" x="285" y="190" width="170" height="42" rx="6"/>
+      <text class="ev-label" x="370" y="216" text-anchor="middle">/auth/*</text>
+    </g>
+    <!-- JWT-protected routes -->
+    <g data-role="jwt-gate">
+      <rect class="ev-route ev-route--jwt" x="285" y="270" width="170" height="42" rx="6"/>
+      <text class="ev-label" x="308" y="296">/a/*</text>
+      <text class="ev-jwt-tag" x="440" y="296" text-anchor="end">JWT</text>
+      <rect class="ev-jwt-glow" x="282" y="267" width="176" height="48" rx="8"/>
+    </g>
+    <g data-role="jwt-gate">
+      <rect class="ev-route ev-route--jwt" x="285" y="350" width="170" height="42" rx="6"/>
+      <text class="ev-label" x="308" y="376">/c/*</text>
+      <text class="ev-jwt-tag" x="440" y="376" text-anchor="end">JWT</text>
+      <rect class="ev-jwt-glow" x="282" y="347" width="176" height="48" rx="8"/>
+    </g>
+  </g>
+
+  <!-- Outbound gateway (Envoy) zone -->
+  <g data-role="gateway" data-gateway="outbound">
+    <rect class="ev-zone" x="920" y="250" width="180" height="200" rx="12"/>
+    <text class="ev-zone-title" x="1010" y="274" text-anchor="middle">outbound-gateway</text>
+    <text class="ev-mono" x="1010" y="292" text-anchor="middle">GRPCRoute method rules</text>
+    <g>
+      <rect class="ev-route" x="938" y="312" width="144" height="38" rx="6"/>
+      <text class="ev-label" x="1010" y="336" text-anchor="middle">Process</text>
+    </g>
+    <g>
+      <rect class="ev-route" x="938" y="366" width="144" height="38" rx="6"/>
+      <text class="ev-label" x="1010" y="390" text-anchor="middle">ProcessDirect</text>
+    </g>
+  </g>
+
+  <!-- Client (role A) -->
+  <g class="ev-node ev-node--a" data-role="client">
+    <rect x="40" y="281" width="120" height="48" rx="8"/>
+    <text class="ev-label" x="100" y="310" text-anchor="middle">client</text>
+  </g>
+  <rect class="ev-glow ev-glow--client" x="37" y="278" width="126" height="54" rx="10"/>
+
+  <!-- token-service (role C) -->
+  <g class="ev-node ev-node--c" data-role="auth">
+    <rect x="600" y="106" width="180" height="54" rx="8"/>
+    <text class="ev-label" x="690" y="128" text-anchor="middle">token-service</text>
+    <text class="ev-mono" x="690" y="146" text-anchor="middle">mints RS256 JWT + JWKS</text>
+  </g>
+  <rect class="ev-glow ev-glow--auth" x="597" y="103" width="186" height="60" rx="10"/>
+
+  <!-- service-a (role B) -->
+  <g class="ev-node ev-node--b" data-role="service" data-service="a">
+    <rect x="550" y="250" width="120" height="48" rx="8"/>
+    <text class="ev-label" x="610" y="272" text-anchor="middle">service-a</text>
+    <text class="ev-mono" x="610" y="289" text-anchor="middle">HTTP/2 h2c</text>
+  </g>
+  <rect class="ev-glow ev-glow--a" x="547" y="247" width="126" height="54" rx="10"/>
+
+  <!-- service-b (role B) -->
+  <g class="ev-node ev-node--b" data-role="service" data-service="b">
+    <rect x="750" y="250" width="120" height="48" rx="8"/>
+    <text class="ev-label" x="810" y="272" text-anchor="middle">service-b</text>
+    <text class="ev-mono" x="810" y="289" text-anchor="middle">gRPC</text>
+  </g>
+  <rect class="ev-glow ev-glow--b" x="747" y="247" width="126" height="54" rx="10"/>
+
+  <!-- service-c (role B) -->
+  <g class="ev-node ev-node--b" data-role="service" data-service="c">
+    <rect x="550" y="360" width="120" height="48" rx="8"/>
+    <text class="ev-label" x="610" y="382" text-anchor="middle">service-c</text>
+    <text class="ev-mono" x="610" y="399" text-anchor="middle">HTTP/2 h2c</text>
+  </g>
+  <rect class="ev-glow ev-glow--c" x="547" y="357" width="126" height="54" rx="10"/>
+
+  <!-- service-d (role B) -->
+  <g class="ev-node ev-node--b" data-role="service" data-service="d">
+    <rect x="1120" y="326" width="96" height="48" rx="8"/>
+    <text class="ev-label" x="1168" y="348" text-anchor="middle">service-d</text>
+    <text class="ev-mono" x="1168" y="365" text-anchor="middle">gRPC</text>
+  </g>
+  <rect class="ev-glow ev-glow--d" x="1117" y="323" width="102" height="54" rx="10"/>
+
+  <!-- Edges -->
+  <!-- mTLS entry (static, locked treatment) -->
+  <line class="ev-arrow ev-arrow--mtls" data-role="mtls" x1="160" y1="305" x2="257" y2="305"/>
+  <text class="ev-mono" x="208" y="297" text-anchor="middle">mTLS</text>
+
+  <!-- /auth -> token-service (mint), with the JWKS fetch returning alongside -->
+  <path class="ev-arrow" d="M 484 196 L 596 142"/>
+  <path class="ev-arrow--jwks" data-role="jwks" d="M 596 164 L 484 218"/>
+  <text class="ev-mono--c" x="547" y="207" text-anchor="middle">JWKS</text>
+
+  <!-- /a -> service-a, /c -> service-c -->
+  <path class="ev-arrow" d="M 456 291 L 547 274"/>
+  <path class="ev-arrow" d="M 456 371 L 547 384"/>
+
+  <!-- service-a -> service-b -->
+  <path class="ev-arrow" d="M 670 274 L 747 274"/>
+  <text class="ev-mono" x="708" y="266" text-anchor="middle">gRPC</text>
+
+  <!-- service-b -> outbound Process -->
+  <path class="ev-arrow" d="M 870 274 L 936 328"/>
+
+  <!-- service-c -> outbound ProcessDirect -->
+  <path class="ev-arrow" d="M 670 385 L 935 385"/>
+  <text class="ev-mono" x="802" y="378" text-anchor="middle">ProcessDirect</text>
+
+  <!-- outbound -> service-d -->
+  <path class="ev-arrow" d="M 1082 331 L 1117 344"/>
+  <path class="ev-arrow" d="M 1082 385 L 1117 358"/>
+
+  <!-- Flow dots: the traffic -->
+  <!-- Path A journey -->
+  <circle class="ev-flow-dot" data-role="flow-dot" r="6" style="animation: ev-dot 3200ms linear infinite;">
+    <animateMotion dur="3200ms" repeatCount="indefinite" calcMode="linear"
+      path="M 160 305 L 260 305 L 370 305 L 370 291 L 455 291 L 550 274 L 670 274 L 750 274 L 870 274 L 938 331 L 1082 331 L 1120 350"/>
+  </circle>
+  <!-- Path C journey -->
+  <circle class="ev-flow-dot" data-role="flow-dot" r="6" style="animation: ev-dot 2600ms linear infinite;">
+    <animateMotion dur="2600ms" repeatCount="indefinite" calcMode="linear"
+      path="M 160 305 L 260 305 L 370 305 L 370 371 L 455 371 L 550 384 L 670 384 L 938 385 L 1082 385 L 1120 356"/>
+  </circle>
+  <!-- /auth journey -->
+  <circle class="ev-flow-dot" data-role="flow-dot" r="5" style="animation: ev-dot 2000ms linear infinite;">
+    <animateMotion dur="2000ms" repeatCount="indefinite" calcMode="linear"
+      path="M 160 305 L 260 305 L 370 305 L 370 211 L 484 197 L 596 142"/>
+  </circle>
+</svg>

@@ -120,9 +120,16 @@ rateLimit:
 
 ### 3. Demo (`scripts/demo.sh`)
 
-New step, placed after the spec-1 alice/bob identity step: issue 11
-requests to `/a/hello` back-to-back using the `client-bob` cert, asserting
-the first 10 return `200` and the 11th returns `429`. This reuses the
+New step, placed after the spec-1 alice/bob identity step: burst requests
+to `/a/hello` back-to-back using the `client-bob` cert until a `429` is
+observed (bounded at 15 attempts), asserting the limiter engages — more
+than 5 successes proves bob drew from his own 10/min bucket rather than
+the shared 5/min default, and the eventual `429` proves enforcement. An
+exact "first 10 succeed, 11th fails" count is deliberately NOT asserted:
+the spec-1 identity step already spends one of bob's tokens on the same
+route, and Envoy's Local bucket refills continuously (~1 token every 6 s
+at 10/min) rather than resetting on a minute boundary, so exact counts
+drift by a token or two with wall-clock timing. This reuses the
 `client-bob.crt`/`client-bob.key` pair added by the previous spec — no new
 PKI changes needed here.
 

@@ -1,0 +1,203 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540" role="img" preserveAspectRatio="xMidYMid meet" data-role="sequence">
+  <title>Path C — /c/hello request sequence</title>
+  <desc>Over a mutual-TLS connection the client calls /c/hello with a Bearer token. The inbound
+  gateway validates the JWT, then forwards to service-c, which dials the outbound gateway with an
+  overridden :authority. The gateway routes gRPC ProcessDirect to service-d; the ChainResponse
+  climbs back while a hops chip accumulates service-d and service-c.</desc>
+  <style>
+/* EV-TOKENS:START */
+:root {
+  /* Surfaces and ink */
+  --ev-bg: #020817; /* near-black slate canvas */
+  --ev-surface: #191426; /* plum lift over the canvas; diagram surface */
+  --ev-surface-2: #221b3e; /* second elevation step (gateway bodies) */
+  --ev-border: #29272a; /* hairlines, rules */
+  --ev-grid: #302a4d; /* outlines on surfaces */
+  --ev-ink: #f8fafc; /* foreground text */
+  --ev-muted: #94a3b8; /* muted / annotation text */
+
+  /* Brand violet: identity and structure (the Envoy gateways) */
+  --ev-primary: #6d28d9;
+  --ev-primary-bright: #9867e4;
+  --ev-primary-soft: #2a2246; /* neutral / soft node fill */
+  --ev-primary-soft-stroke: #7c6ac4; /* neutral / soft node stroke */
+
+  /* Highlight: the security beat — JWT validation, token minting, "look here" */
+  --ev-highlight: #f6a723;
+  --ev-highlight-soft: #4a3410;
+
+  /* Diagram roles */
+  --ev-role-a: #10b981; /* client (external source) */
+  --ev-role-a-stroke: #34d39a;
+  --ev-role-b: #38bdf8; /* application services (a / b / c / d) */
+  --ev-role-b-stroke: #7dd3fc;
+  --ev-role-c: #f472b6; /* token-service / auth support plane (JWKS) */
+  --ev-neutral: #8992aa; /* passive actor */
+
+  /* Flow */
+  --ev-flow: #a8a1cf; /* request arrows and connectors */
+  --ev-flow-strong: #f1edff; /* emphasized flow */
+
+  /* Typography */
+  --ev-font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --ev-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+  --ev-fs-title: 20px;
+  --ev-fs-label: 13px;
+  --ev-fs-mono: 12px;
+
+  /* Geometry (unitless values are SVG user units) */
+  --ev-radius: 8px;
+  --ev-radius-sm: 5px;
+  --ev-stroke: 1.5;
+  --ev-stroke-strong: 2.5;
+  --ev-node-w: 120;
+  --ev-node-h: 48;
+  --ev-gap: 24;
+
+  /* Timing */
+  --ev-dur: 1200ms;
+  --ev-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* EV-TOKENS:END */
+    text { text-rendering: geometricPrecision; stroke: none; }
+    .ev-canvas { fill: var(--ev-surface); stroke: var(--ev-grid); stroke-width: var(--ev-stroke); }
+    .ev-title { font-family: var(--ev-font); font-size: var(--ev-fs-title); font-weight: 600; fill: var(--ev-ink); }
+    .ev-label { font-family: var(--ev-font); font-size: var(--ev-fs-label); font-weight: 600; fill: var(--ev-ink); }
+    .ev-mono { font-family: var(--ev-mono); font-size: var(--ev-fs-mono); fill: var(--ev-muted); }
+    .ev-node { fill: var(--ev-primary-soft); stroke: var(--ev-primary-soft-stroke); stroke-width: var(--ev-stroke); }
+    .ev-node--a { fill: var(--ev-role-a); stroke: var(--ev-role-a-stroke); }
+    .ev-node--b { fill: var(--ev-role-b); stroke: var(--ev-role-b-stroke); }
+    .ev-node--a .ev-label, .ev-node--b .ev-label { fill: var(--ev-surface); }
+    .ev-lifeline { stroke: var(--ev-grid); stroke-width: var(--ev-stroke); stroke-dasharray: 3 6; }
+    .ev-msg { fill: none; stroke: var(--ev-flow); stroke-width: var(--ev-stroke); marker-end: url(#ev-head); }
+    .ev-msg--res { stroke-dasharray: 6 4; }
+    .ev-msg-label { font-family: var(--ev-mono); font-size: var(--ev-fs-mono); fill: var(--ev-muted); }
+    .ev-note { fill: var(--ev-highlight-soft); stroke: var(--ev-highlight); stroke-width: var(--ev-stroke); }
+    .ev-note-label { font-family: var(--ev-font); font-size: var(--ev-fs-label); font-weight: 600; fill: var(--ev-ink); }
+    .ev-hops-title { font-family: var(--ev-mono); font-size: var(--ev-fs-mono); fill: var(--ev-muted); }
+    .ev-hops-chip { fill: var(--ev-primary-soft); stroke: var(--ev-primary-soft-stroke); stroke-width: var(--ev-stroke); }
+    .ev-hops-label { font-family: var(--ev-mono); font-size: var(--ev-fs-mono); fill: var(--ev-ink); }
+    .ev-head { fill: var(--ev-flow); }
+    .ev-hop { fill: none; stroke: var(--ev-flow-strong); stroke-width: var(--ev-stroke-strong); opacity: 0; animation: ev-hop 7800ms var(--ev-ease) infinite; }
+    @keyframes ev-hop { 0% { opacity: 0; } 3% { opacity: 0.9; } 15% { opacity: 0; } 100% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      .ev-hop { animation: none; opacity: 0; }
+      [data-role="message"], [data-role="jwt-gate"], .ev-hops-step { opacity: 1; }
+    }
+  </style>
+  <defs>
+    <marker id="ev-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="ev-head" d="M 0 0 L 10 5 L 0 10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="ev-canvas" x="1" y="1" width="898" height="538" rx="14"/>
+  <text class="ev-title" x="40" y="46">Path C — /c/hello</text>
+
+  <!-- Lifelines -->
+  <line class="ev-lifeline" data-role="lifeline" data-actor="client" x1="90" y1="110" x2="90" y2="472"/>
+  <line class="ev-lifeline" data-role="lifeline" data-actor="gw" x1="250" y1="110" x2="250" y2="472"/>
+  <line class="ev-lifeline" data-role="lifeline" data-actor="c" x1="430" y1="110" x2="430" y2="472"/>
+  <line class="ev-lifeline" data-role="lifeline" data-actor="egw" x1="620" y1="110" x2="620" y2="472"/>
+  <line class="ev-lifeline" data-role="lifeline" data-actor="d" x1="810" y1="110" x2="810" y2="472"/>
+
+  <!-- Lifeline headers -->
+  <g class="ev-node ev-node--a"><rect x="30" y="64" width="120" height="46" rx="8"/><text class="ev-label" x="90" y="92" text-anchor="middle">client</text></g>
+  <g class="ev-node"><rect x="175" y="64" width="150" height="46" rx="8"/><text class="ev-label" x="250" y="92" text-anchor="middle">inbound-gateway</text></g>
+  <g class="ev-node ev-node--b"><rect x="370" y="64" width="120" height="46" rx="8"/><text class="ev-label" x="430" y="92" text-anchor="middle">service-c</text></g>
+  <g class="ev-node"><rect x="545" y="64" width="150" height="46" rx="8"/><text class="ev-label" x="620" y="92" text-anchor="middle">outbound-gateway</text></g>
+  <g class="ev-node ev-node--b"><rect x="750" y="64" width="120" height="46" rx="8"/><text class="ev-label" x="810" y="92" text-anchor="middle">service-d</text></g>
+
+  <!-- Arrival pulse: each actor lights up as traffic lands on it -->
+  <g data-role="arrivals">
+    <rect class="ev-hop" x="175" y="64" width="150" height="46" rx="8" style="animation-delay: 936ms"/>
+    <rect class="ev-hop" x="370" y="64" width="120" height="46" rx="8" style="animation-delay: 2028ms"/>
+    <rect class="ev-hop" x="545" y="64" width="150" height="46" rx="8" style="animation-delay: 2613ms"/>
+    <rect class="ev-hop" x="750" y="64" width="120" height="46" rx="8" style="animation-delay: 3198ms"/>
+    <rect class="ev-hop" x="545" y="64" width="150" height="46" rx="8" style="animation-delay: 3783ms"/>
+    <rect class="ev-hop" x="370" y="64" width="120" height="46" rx="8" style="animation-delay: 4368ms"/>
+    <rect class="ev-hop" x="175" y="64" width="150" height="46" rx="8" style="animation-delay: 4953ms"/>
+    <rect class="ev-hop" x="30" y="64" width="120" height="46" rx="8" style="animation-delay: 5538ms"/>
+  </g>
+
+  <!-- Messages -->
+  <g data-role="message" data-seq="1">
+    <path class="ev-msg" d="M 90 140 L 246 140">
+      <animate attributeName="d" dur="7800ms" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.050;0.120;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1" values="M 90 140 L 92 140; M 90 140 L 92 140; M 90 140 L 246 140; M 90 140 L 246 140"/>
+    </path>
+    <text class="ev-msg-label" x="168" y="134" text-anchor="middle">POST /c/hello · Bearer</text>
+    <animate attributeName="opacity" dur="7800ms" repeatCount="indefinite" calcMode="spline" values="0;0;1;1;0;0" keyTimes="0;0.050;0.095;0.880;0.913;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1; 0.4 0 1 1; 0 0 1 1"/>
+  </g>
+
+  <!-- JWT validation beat -->
+  <g data-role="jwt-gate">
+    <rect class="ev-note" x="158" y="156" width="184" height="26" rx="6"/>
+    <text class="ev-note-label" x="250" y="173" text-anchor="middle">validate JWT · JWKS</text>
+    <animate attributeName="opacity" dur="7800ms" repeatCount="indefinite" calcMode="spline" values="0;0;1;1;0;0" keyTimes="0;0.115;0.160;0.887;0.920;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1; 0.4 0 1 1; 0 0 1 1"/>
+  </g>
+
+  <g data-role="message" data-seq="2">
+    <path class="ev-msg" d="M 250 210 L 426 210">
+      <animate attributeName="d" dur="7800ms" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.190;0.260;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1" values="M 250 210 L 252 210; M 250 210 L 252 210; M 250 210 L 426 210; M 250 210 L 426 210"/>
+    </path>
+    <text class="ev-msg-label" x="338" y="204" text-anchor="middle">POST /c/hello (HTTP/2)</text>
+    <animate attributeName="opacity" dur="7800ms" repeatCount="indefinite" calcMode="spline" values="0;0;1;1;0;0" keyTimes="0;0.190;0.235;0.894;0.927;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1; 0.4 0 1 1; 0 0 1 1"/>
+  </g>
+  <g data-role="message" data-seq="3">
+    <path class="ev-msg" d="M 430 250 L 616 250">
+      <animate attributeName="d" dur="7800ms" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.265;0.335;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1" values="M 430 250 L 432 250; M 430 250 L 432 250; M 430 250 L 616 250; M 430 250 L 616 250"/>
+    </path>
+    <text class="ev-msg-label" x="523" y="244" text-anchor="middle">gRPC ProcessDirect · :authority</text>
+    <animate attributeName="opacity" dur="7800ms" repeatCount="indefinite" calcMode="spline" values="0;0;1;1;0;0" keyTimes="0;0.265;0.310;0.901;0.934;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1; 0.4 0 1 1; 0 0 1 1"/>
+  </g>
+  <g data-role="message" data-seq="4">
+    <path class="ev-msg" d="M 620 290 L 806 290">
+      <animate attributeName="d" dur="7800ms" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.340;0.410;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1" values="M 620 290 L 622 290; M 620 290 L 622 290; M 620 290 L 806 290; M 620 290 L 806 290"/>
+    </path>
+    <text class="ev-msg-label" x="713" y="284" text-anchor="middle">gRPC ProcessDirect</text>
+    <animate attributeName="opacity" dur="7800ms" repeatCount="indefinite" calcMode="spline" values="0;0;1;1;0;0" keyTimes="0;0.340;0.385;0.908;0.941;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1; 0.4 0 1 1; 0 0 1 1"/>
+  </g>
+  <g data-role="message" data-seq="5">
+    <path class="ev-msg ev-msg--res" d="M 810 330 L 624 330">
+      <animate attributeName="d" dur="7800ms" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.415;0.485;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1" values="M 810 330 L 808 330; M 810 330 L 808 330; M 810 330 L 624 330; M 810 330 L 624 330"/>
+    </path>
+    <text class="ev-msg-label" x="717" y="324" text-anchor="middle">ChainResponse +service-d</text>
+    <animate attributeName="opacity" dur="7800ms" repeatCount="indefinite" calcMode="spline" values="0;0;1;1;0;0" keyTimes="0;0.415;0.460;0.915;0.948;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1; 0.4 0 1 1; 0 0 1 1"/>
+  </g>
+  <g data-role="message" data-seq="6">
+    <path class="ev-msg ev-msg--res" d="M 620 370 L 434 370">
+      <animate attributeName="d" dur="7800ms" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.490;0.560;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1" values="M 620 370 L 618 370; M 620 370 L 618 370; M 620 370 L 434 370; M 620 370 L 434 370"/>
+    </path>
+    <text class="ev-msg-label" x="527" y="364" text-anchor="middle">ChainResponse (direct route)</text>
+    <animate attributeName="opacity" dur="7800ms" repeatCount="indefinite" calcMode="spline" values="0;0;1;1;0;0" keyTimes="0;0.490;0.535;0.922;0.955;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1; 0.4 0 1 1; 0 0 1 1"/>
+  </g>
+  <g data-role="message" data-seq="7">
+    <path class="ev-msg ev-msg--res" d="M 430 410 L 254 410">
+      <animate attributeName="d" dur="7800ms" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.565;0.635;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1" values="M 430 410 L 428 410; M 430 410 L 428 410; M 430 410 L 254 410; M 430 410 L 254 410"/>
+    </path>
+    <text class="ev-msg-label" x="342" y="404" text-anchor="middle">200 JSON +service-c</text>
+    <animate attributeName="opacity" dur="7800ms" repeatCount="indefinite" calcMode="spline" values="0;0;1;1;0;0" keyTimes="0;0.565;0.610;0.929;0.962;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1; 0.4 0 1 1; 0 0 1 1"/>
+  </g>
+  <g data-role="message" data-seq="8">
+    <path class="ev-msg ev-msg--res" d="M 250 450 L 94 450">
+      <animate attributeName="d" dur="7800ms" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.640;0.710;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1" values="M 250 450 L 248 450; M 250 450 L 248 450; M 250 450 L 94 450; M 250 450 L 94 450"/>
+    </path>
+    <text class="ev-msg-label" x="172" y="444" text-anchor="middle">200 JSON</text>
+    <animate attributeName="opacity" dur="7800ms" repeatCount="indefinite" calcMode="spline" values="0;0;1;1;0;0" keyTimes="0;0.640;0.685;0.936;0.969;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1; 0.4 0 1 1; 0 0 1 1"/>
+  </g>
+
+  <!-- Accumulating hops chip -->
+  <g data-role="hops">
+    <text class="ev-hops-title" x="40" y="512">hops</text>
+    <g class="ev-hops-step">
+      <rect class="ev-hops-chip" x="78" y="498" width="94" height="22" rx="6"/>
+      <text class="ev-hops-label" x="125" y="513" text-anchor="middle">service-d</text>
+      <animate attributeName="opacity" dur="7800ms" repeatCount="indefinite" calcMode="spline" values="0;0;1;1;0;0" keyTimes="0;0.415;0.460;0.936;0.969;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1; 0.4 0 1 1; 0 0 1 1"/>
+    </g>
+    <g class="ev-hops-step">
+      <rect class="ev-hops-chip" x="180" y="498" width="94" height="22" rx="6"/>
+      <text class="ev-hops-label" x="227" y="513" text-anchor="middle">service-c</text>
+      <animate attributeName="opacity" dur="7800ms" repeatCount="indefinite" calcMode="spline" values="0;0;1;1;0;0" keyTimes="0;0.565;0.610;0.936;0.969;1" keySplines="0 0 1 1; 0.22 1 0.36 1; 0 0 1 1; 0.4 0 1 1; 0 0 1 1"/>
+    </g>
+  </g>
+</svg>
