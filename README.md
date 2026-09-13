@@ -190,6 +190,23 @@ outbound one — not a bare number (the container listens on 10443/10080
 internally). This is what service-b/service-c dial and what `kubectl
 port-forward` targets.
 
+**Observability: OpenTelemetry everywhere, self-contained backends.** Both
+gateway proxies and all five Go services emit OpenTelemetry traces to one
+in-cluster OTLP collector (forwarding to Tempo), and the proxies expose
+Envoy's Prometheus stats, scraped by an in-cluster Prometheus. Everything
+propagates W3C `tracecontext`, so one request produces a single distributed
+trace: inbound gateway → service-a → service-b → outbound gateway →
+service-d. The gateway side is pure configuration — an `EnvoyProxy` resource
+attached via the `GatewayClass` `parametersRef`
+(`deploy/k8s/envoyproxy.yaml`), so both proxies inherit it. The service side
+is auto-instrumentation only (`otelhttp`/`otelgrpc` wrappers, no manual
+spans); it activates solely through the `OTEL_EXPORTER_OTLP_ENDPOINT` env
+var, so local runs and unit tests are unaffected. Grafana (anonymous, demo
+only) ships with provisioned datasources and a gateway dashboard — `make
+grafana` and browse. All of it is plain manifests in
+`deploy/k8s/observability/`, ephemeral by design: no persistence, no
+external dependencies, deleted with the cluster.
+
 ## Prerequisites
 
 - `docker`, `k3d`, `helm`, `kubectl`, `go`, `buf`, `openssl` on your PATH
@@ -203,9 +220,13 @@ port-forward` targets.
 ```
 make up      # create dedicated k3d cluster, install Envoy Gateway controller,
              # generate demo mTLS certs, build/import images, deploy everything
-make demo    # eight-step mTLS + JWT walkthrough / E2E acceptance script
+make demo    # nine-step mTLS + JWT + observability walkthrough / E2E acceptance script
 make down    # delete the dedicated k3d cluster (removes everything)
 ```
+
+After `make demo`, run `make grafana` and open http://localhost:3000 to
+browse the gateway dashboard (Prometheus) and the demo's distributed traces
+(Explore → Tempo, e.g. query `{resource.service.name="service-a"}`).
 
 `make up` disables k3d's built-in Traefik at cluster-creation time so it
 never installs its own (conflicting) Gateway API CRDs — Envoy Gateway's Helm
@@ -219,12 +240,14 @@ Individual steps, useful once the cluster already exists:
 - `make bootstrap-gateway-controller` — install/upgrade Envoy Gateway + GatewayClass.
 - `make proto`, `make build`, `make docker-build`, `make k3d-import`
 - `make deploy-services`, `make deploy-infra`, `make deploy` (build+import+apply, cluster must already exist)
+- `make deploy-observability` — apply the monitoring stack (OTel Collector, Tempo, Prometheus, Grafana) into the `monitoring` namespace (run automatically by `make up`, before the gateway controller bootstrap).
 - `make certs` — generate the demo mTLS PKI (CA + server + client certs) into `.certs/` (idempotent; delete the dir to rotate).
 - `make token` — mint a JWT via the open `/auth` route (client cert required), printed as `export TOKEN=...`.
-- `make demo` — run `scripts/demo.sh`, the eight-step mTLS + JWT walkthrough / E2E acceptance test.
+- `make demo` — run `scripts/demo.sh`, the nine-step mTLS + JWT + observability walkthrough / E2E acceptance test.
 - `make test` — quick single-shot exercise of the full path-A chain through the inbound gateway.
-- `make clean` — remove this project's k8s resources, keep the cluster and gateway controller running.
-- `make status` — quick health check (pods, gateways, routes).
+- `make clean` — remove this project's k8s resources (services + gateways); the monitoring stack, EnvoyProxy config and gateway controller stay, so redeploys keep their telemetry history.
+- `make status` — quick health check (pods, gateways, routes, monitoring).
+- `make grafana` — port-forward Grafana to http://localhost:3000 (anonymous admin; provisioned `Envoy Gateway` dashboard + Tempo datasource for traces).
 
 ## Demo walkthrough
 
@@ -240,7 +263,7 @@ TLS=(--cacert .certs/ca.crt --cert .certs/client.crt --key .certs/client.key \
 
 `--resolve` pins `inbound.local` to the port-forward so TLS SNI matches the
 server certificate's SAN; the URL's hostname doubles as the `Host` header,
-and HTTP/2 is negotiated via ALPN. The script exercises eight steps:
+and HTTP/2 is negotiated via ALPN. The script exercises nine steps:
 
 **0. No client certificate → handshake rejected**
 ```bash
@@ -339,6 +362,22 @@ within the same minute starts with bob's bucket drained, so this step
 (and step 6's bob request) can fail until the window refills — wait 60
 seconds and retry.
 
+**8. Observability: gateway metrics in Prometheus, traces in Tempo**
+```bash
+kubectl --context k3d-envoy-experiment port-forward -n monitoring svc/prometheus 19090:9090 &
+kubectl --context k3d-envoy-experiment port-forward -n monitoring svc/tempo 13200:3200 &
+curl -s 'http://127.0.0.1:19090/api/v1/query?query=envoy_cluster_upstream_rq_total'
+curl -s 'http://127.0.0.1:13200/api/search?tags=service.name%3Dservice-a&limit=1'
+```
+Exercises: the whole telemetry pipeline, fed by the traffic from steps 0–7.
+The Prometheus query proves the `EnvoyProxy` config exposed the proxies'
+`/stats/prometheus` endpoint and Prometheus discovered and scraped them; the
+Tempo search proves gateway and service spans travelled OTLP → collector →
+Tempo and that service-a's OTel SDK joined the trace Envoy started. Both
+checks poll for up to 30 seconds — span batches and the 5 s scrape interval
+make telemetry eventually consistent, never instant. For a human-friendly
+view of the same data, run `make grafana`.
+
 ## Failure modes
 
 - **Client cert signed by a different CA (or none).** The TLS handshake
@@ -372,17 +411,19 @@ cmd/{service-a,service-b,service-c,service-d,token-service}/main.go   Entrypoint
 internal/certident/              Parses the gateway's XFCC header into a CN + fingerprint client identity
 internal/egress/                  Shared gRPC dial helper (:authority override) for gateway egress
 internal/envutil/                 Tiny env-var helper
+internal/otelsetup/               OTel tracing bootstrap (OTLP/gRPC exporter, W3C propagation; no-op without OTEL_EXPORTER_OTLP_ENDPOINT)
 internal/servicea/                HTTP/2 handler -> gRPC call to service-b
 internal/serviceb/                gRPC server -> egresses to service-d via outbound gateway
 internal/servicec/                HTTP/2 handler -> egresses directly to service-d (ProcessDirect)
 internal/serviced/                Terminal gRPC server (Process + ProcessDirect)
 internal/tokenservice/            RS256 JWT minting + JWKS endpoint, in-memory keys
-deploy/k8s/                       Namespace + Deployments/Services for the five Go services
+deploy/k8s/                       Namespace + Deployments/Services for the five Go services, EnvoyProxy telemetry config (envoyproxy.yaml)
+deploy/k8s/observability/         Self-contained monitoring stack: OTel Collector, Tempo, Prometheus, Grafana (plain manifests, monitoring namespace)
 deploy/charts/inbound-gateway/    Helm chart: Gateway (HTTPS + mTLS) + HTTPRoutes (/auth, /a, /c) + JWT SecurityPolicy + ClientTrafficPolicy (mTLS + XFCC forwarding) + BackendTrafficPolicy (per-client-CN rate limiting)
 deploy/charts/outbound-gateway/   Helm chart: Gateway + GRPCRoute (Process, ProcessDirect method rules)
 scripts/gen-certs.sh              Generates the demo mTLS PKI into .certs/ (git-ignored)
-scripts/demo.sh                   Eight-step mTLS + JWT demo / E2E acceptance script (used by `make demo`)
-docs/superpowers/                 Design spec and plan for the JWT multi-route feature
+scripts/demo.sh                   Nine-step mTLS + JWT + observability demo / E2E acceptance script (used by `make demo`)
+docs/superpowers/                 Design specs + implementation plans (JWT routes, mTLS identity, rate limiting, observability)
 Dockerfile                        Multi-stage build, select service via --build-arg SERVICE=
 Makefile                          proto/build/docker-build/k3d-import/deploy/token/demo/test/clean targets
 ```

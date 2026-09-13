@@ -13,6 +13,7 @@ import (
 	chainv1 "envoy-experiment/gen/chain/v1"
 	"envoy-experiment/internal/certident"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -47,7 +48,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[%s] received %s %s (proto=%s) trace=%s", hopName, r.Method, r.URL.Path, r.Proto, traceID)
 
-	conn, err := grpc.NewClient(h.ServiceBAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(h.ServiceBAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("%s: dial service-b: %v", hopName, err), http.StatusBadGateway)
 		return

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Eight-step demo of the mTLS + JWT protected multi-route sandbox. Doubles as
+# Nine-step demo of the mTLS + JWT protected multi-route sandbox. Doubles as
 # the E2E acceptance test: exits non-zero if any expectation fails.
 set -u
 KCTX="${KCTX:-k3d-envoy-experiment}"
@@ -92,6 +92,40 @@ if [[ "$rl_limited" == "yes" && $rl_ok -gt 5 ]]; then
   echo "PASS  bob rate-limited after $rl_ok successes (429 observed)"; pass=$((pass+1))
 else
   echo "FAIL  bob rate limit: successes=$rl_ok, 429 observed=$rl_limited (re-run within the same minute? wait 60s and retry)"; fail=$((fail+1))
+fi
+
+echo "== 8. Observability: gateway metrics in Prometheus, traces in Tempo =="
+# Steps 0-7 generated the traffic; telemetry lands asynchronously (batched
+# spans, 5s scrape interval), so poll each backend with a deadline.
+kubectl --context "$KCTX" port-forward -n monitoring svc/prometheus 19090:9090 >/dev/null 2>&1 &
+PROM_PF=$!
+kubectl --context "$KCTX" port-forward -n monitoring svc/tempo 13200:3200 >/dev/null 2>&1 &
+TEMPO_PF=$!
+trap 'kill $PF_PID $PROM_PF $TEMPO_PF 2>/dev/null' EXIT
+sleep 3
+
+metrics_ok=no
+for i in $(seq 1 10); do
+  PROM_RESP=$(curl -s "http://127.0.0.1:19090/api/v1/query?query=envoy_cluster_upstream_rq_total")
+  if [[ "$PROM_RESP" == *'"__name__":"envoy_cluster_upstream_rq_total"'* ]]; then metrics_ok=yes; break; fi
+  sleep 3
+done
+if [[ "$metrics_ok" == "yes" ]]; then
+  echo "PASS  gateway metrics scraped by Prometheus"; pass=$((pass+1))
+else
+  echo "FAIL  no gateway metrics in Prometheus after 30s (check 'kubectl get pods -n monitoring' and the port-forward)"; fail=$((fail+1))
+fi
+
+traces_ok=no
+for i in $(seq 1 10); do
+  TEMPO_RESP=$(curl -s "http://127.0.0.1:13200/api/search?tags=service.name%3Dservice-a&limit=1")
+  if [[ "$TEMPO_RESP" == *'"traceID"'* ]]; then traces_ok=yes; break; fi
+  sleep 3
+done
+if [[ "$traces_ok" == "yes" ]]; then
+  echo "PASS  service-a traces stored in Tempo"; pass=$((pass+1))
+else
+  echo "FAIL  no service-a traces in Tempo after 30s (check 'kubectl get pods -n monitoring' and the port-forward)"; fail=$((fail+1))
 fi
 
 echo ""

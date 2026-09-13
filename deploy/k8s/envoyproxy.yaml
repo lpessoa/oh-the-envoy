@@ -1,0 +1,46 @@
+# Telemetry configuration shared by every Envoy proxy this GatewayClass
+# manages (both the inbound and outbound gateways):
+#   - metrics: expose Envoy stats at :19001/stats/prometheus (scraped by the
+#     Prometheus instance in the monitoring namespace)
+#   - tracing: 100% sampled OpenTelemetry spans, shipped over OTLP/gRPC to
+#     the otel-collector in the monitoring namespace (which forwards to
+#     Tempo). Envoy's OTel tracer propagates W3C tracecontext, so gateway
+#     spans and the Go services' spans join into one distributed trace.
+# Attached via GatewayClass.spec.parametersRef (see gatewayclass.yaml).
+# Escape hatch: remove the parametersRef and this file to revert the proxies
+# to their untelemetered defaults.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: proxy-config
+  namespace: envoy-gateway-system
+spec:
+  telemetry:
+    metrics:
+      prometheus: {}
+    tracing:
+      samplingRate: 100
+      provider:
+        type: OpenTelemetry
+        backendRefs:
+          - name: otel-collector
+            namespace: monitoring
+            port: 4317
+---
+# The tracing backendRef above crosses namespaces
+# (envoy-gateway-system -> monitoring), which Gateway API only allows when
+# the target namespace grants it explicitly.
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-envoyproxy-to-otel-collector
+  namespace: monitoring
+spec:
+  from:
+    - group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      namespace: envoy-gateway-system
+  to:
+    - group: ""
+      kind: Service
+      name: otel-collector

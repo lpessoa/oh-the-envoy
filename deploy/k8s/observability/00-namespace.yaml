@@ -1,0 +1,7 @@
+# Namespace for the self-contained observability stack (OTel Collector,
+# Tempo, Prometheus, Grafana). Everything in here is ephemeral demo
+# infrastructure — no persistence, deleted with the cluster.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
