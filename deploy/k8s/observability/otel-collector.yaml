@@ -75,6 +75,10 @@ spec:
     - name: otlp-grpc
       port: 4317
       targetPort: otlp-grpc
+      # Envoy Gateway infers HTTP/2 for the tracing backendRef from this;
+      # without it the proxies export OTLP over HTTP/1 and the collector's
+      # gRPC receiver rejects every batch.
+      appProtocol: grpc
     - name: otlp-http
       port: 4318
       targetPort: otlp-http
