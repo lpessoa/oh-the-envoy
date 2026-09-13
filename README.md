@@ -234,6 +234,8 @@ chart brings its own compatible set.
 
 ## Granular targets
 
+You can use `make help` to get a list of all available targets and their functionality.
+
 Individual steps, useful once the cluster already exists:
 
 - `make cluster-up` / `make cluster-down` — just the k3d cluster.
