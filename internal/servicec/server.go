@@ -12,6 +12,7 @@ import (
 	"time"
 
 	chainv1 "envoy-experiment/gen/chain/v1"
+	"envoy-experiment/internal/certident"
 	"envoy-experiment/internal/egress"
 )
 
@@ -27,9 +28,10 @@ func New(outboundGatewayAddr, serviceDAuthority string) *Handler {
 }
 
 type chainResult struct {
-	Message  string   `json:"message"`
-	Hops     []string `json:"hops"`
-	Protocol string   `json:"received_protocol"`
+	Message  string              `json:"message"`
+	Hops     []string            `json:"hops"`
+	Protocol string              `json:"received_protocol"`
+	Client   *certident.Identity `json:"client,omitempty"`
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +62,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := chainResult{Message: resp.GetMessage(), Hops: append(resp.GetHops(), hopName+"(response)"), Protocol: r.Proto}
+	if id, ok := certident.Parse(r.Header.Get("x-forwarded-client-cert")); ok {
+		result.Client = &id
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }

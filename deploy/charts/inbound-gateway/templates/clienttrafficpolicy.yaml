@@ -1,6 +1,10 @@
 # Enforces mutual TLS on the Gateway's listener: clients must present a
 # certificate signed by the CA in the referenced Secret or the TLS handshake
-# is rejected before any routing or JWT logic runs.
+# is rejected before any routing or JWT logic runs. Also forwards each
+# validated client certificate's Subject (CN) and fingerprint (Hash, added
+# automatically by Envoy) to downstream services via the standard
+# x-forwarded-client-cert (XFCC) header, so services can distinguish callers
+# without doing their own cert parsing.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: ClientTrafficPolicy
 metadata:
@@ -16,3 +20,8 @@ spec:
       caCertificateRefs:
         - kind: Secret
           name: {{ .Values.tls.caSecretName }}
+  headers:
+    xForwardedClientCert:
+      mode: SanitizeSet
+      certDetailsToAdd:
+        - Subject
